@@ -58,13 +58,36 @@ export class NoaaService {
 
 
 
+    private async wait(ms: number) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    private async fetchWithRetry(url: string, options: any, retries = 3): Promise<any> {
+        let attempt = 0;
+        while (attempt < retries) {
+            try {
+                return await axios.get(url, options);
+            } catch (error: any) {
+                attempt++;
+                // Retry on 5xx errors or network errors (which often appear as status 0 or undefined in axios)
+                const status = error.response?.status;
+                const isRetryable = !status || status >= 500 || status === 429;
+
+                if (!isRetryable || attempt >= retries) {
+                    throw error;
+                }
+
+                const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s...
+                console.warn(`[RainfallDownloader] Request failed, retrying in ${delay}ms... (Attempt ${attempt}/${retries})`);
+                await this.wait(delay);
+            }
+        }
+    }
+
     async request<T>(endpoint: string, params: Record<string, any> = {}): Promise<T> {
         // Construct full URL with params for the target service
         const url = new URL(`${BASE_NOAA}${endpoint}`);
 
-        // Handle array params (like datatypes) manually to match NOAA expectation if needed,
-        // but standard URLSearchParams handles repeats if we append carefully.
-        // Assuming simple params for now or let URLSearchParams handle it.
         Object.keys(params).forEach(key => {
             const val = params[key];
             if (Array.isArray(val)) {
@@ -75,20 +98,38 @@ export class NoaaService {
         });
 
         const fullTargetUrl = url.toString();
-        let requestUrl = fullTargetUrl;
 
-        // If Production, wrap with Proxy
-        if (import.meta.env.PROD) {
-            // corsproxy.io expects encoded target URL
-            requestUrl = `https://corsproxy.io/?${encodeURIComponent(fullTargetUrl)}`;
+        // If NOT in production (Development), simply use the target URL (Vite proxy handles it if configured, or direct if CORS supported)
+        if (!import.meta.env.PROD) {
+            const res = await axios.get(fullTargetUrl, { headers: this.headers });
+            return res.data;
         }
 
-        // Perform request. Note: we pass empty params because we baked them into the URL.
-        const res = await axios.get(requestUrl, {
-            headers: this.headers
-        });
+        // PRODUCTION: Try Fallback Strategy
+        const proxies = [
+            `https://corsproxy.io/?${encodeURIComponent(fullTargetUrl)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(fullTargetUrl)}`
+        ];
 
-        return res.data;
+        let lastError;
+
+        for (const proxyUrl of proxies) {
+            try {
+                console.log(`[RainfallDownloader] Attempting via proxy: ${proxyUrl}`);
+                // allorigins doesn't always support custom headers nicely, but we try. 
+                // Note: NOAA requires 'token' header. corsproxy.io forwards it. allorigins might not.
+                // If allorigins fails to forward header, NOAA returns 400/401.
+                const res = await this.fetchWithRetry(proxyUrl, { headers: this.headers });
+                return res.data;
+            } catch (error) {
+                console.warn(`[RainfallDownloader] Proxy failed: ${proxyUrl}`, error);
+                lastError = error;
+                // If it's a 401/403 (Auth), switching proxy won't help, so throw immediately to avoid wasting time? 
+                // Actually 504 is our main enemy. We continue.
+            }
+        }
+
+        throw lastError;
     }
 
     async findStationsByCity(city: string, limit = 20, buffer = 0.25): Promise<Station[]> {
@@ -97,13 +138,39 @@ export class NoaaService {
         if (cached) return cached;
 
         // 1. Geocode city
-        const geoRes = await axios.get(NOMINATIM_BASE, {
-            params: { q: city, format: 'json', limit: 1 }
-        });
+        // Strategy: Try DIRECT first (browsers often allow it), fallback to PROXY.
+        let lat: string, lon: string;
 
-        if (!geoRes.data || geoRes.data.length === 0) return [];
+        try {
+            console.log(`[RainfallDownloader] Geocoding city (Direct): ${city}`);
+            const geoRes = await axios.get(NOMINATIM_BASE, {
+                params: { q: city, format: 'json', limit: 1 }
+            });
+            if (!geoRes.data || geoRes.data.length === 0) return [];
+            lat = geoRes.data[0].lat;
+            lon = geoRes.data[0].lon;
+        } catch (directError) {
+            console.warn('[RainfallDownloader] Direct Nominatim failed, trying proxy...', directError);
+            // Fallback: Use our robust request method but pointing to Nominatim
+            // We need to manually construct the nominatim URL because request() assumes BASE_NOAA.
+            // Actually, let's just do a manual proxy fetch similar to request() logic but simplified for this one-off.
 
-        const { lat, lon } = geoRes.data[0];
+            const targetUrl = new URL(NOMINATIM_BASE);
+            targetUrl.searchParams.append('q', city);
+            targetUrl.searchParams.append('format', 'json');
+            targetUrl.searchParams.append('limit', '1');
+
+            const fullTargetUrl = targetUrl.toString();
+            // Use corsproxy.io as reliable fallback for nominatim
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(fullTargetUrl)}`;
+
+            const geoRes = await this.fetchWithRetry(proxyUrl, {});
+            // Note: Nominatim response is array
+            if (!geoRes.data || geoRes.data.length === 0) return [];
+            lat = geoRes.data[0].lat;
+            lon = geoRes.data[0].lon;
+        }
+
         const latNum = parseFloat(lat);
         const lonNum = parseFloat(lon);
 
