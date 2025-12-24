@@ -29,8 +29,8 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                     <button
                         onClick={() => setActiveTab('help')}
                         className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'help'
-                                ? 'border-primary text-primary'
-                                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
                             }`}
                     >
                         <HelpCircle className="h-4 w-4" /> Help
@@ -38,8 +38,8 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                     <button
                         onClick={() => setActiveTab('changelog')}
                         className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'changelog'
-                                ? 'border-primary text-primary'
-                                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
                             }`}
                     >
                         <FileText className="h-4 w-4" /> Changelog
@@ -47,8 +47,8 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                     <button
                         onClick={() => setActiveTab('acknowledgements')}
                         className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${activeTab === 'acknowledgements'
-                                ? 'border-primary text-primary'
-                                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
                             }`}
                     >
                         <Info className="h-4 w-4" /> Acknowledgements
@@ -138,17 +138,17 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
 
                     {activeTab === 'acknowledgements' && (
                         <div className="space-y-6 text-sm text-muted-foreground">
-                            <p className="italic text-foreground">
-                                "I wrote this, Ross Volkwein with AI code assistance."
-                            </p>
-
-                            <hr className="border-border" />
+                            <section>
+                                <h3 className="text-foreground font-semibold mb-2">Created By</h3>
+                                <p>
+                                    Ross Volkwein
+                                </p>
+                            </section>
 
                             <section>
-                                <h3 className="text-foreground font-semibold mb-2">Original Legacy</h3>
+                                <h3 className="text-foreground font-semibold mb-2">Development</h3>
                                 <p>
-                                    This application builds upon the work of the <a href="https://pypi.org/project/swmmtoolbox/" className="text-primary hover:underline" target="_blank" rel="noreferrer">swmmtoolbox</a> library by
-                                    <strong className="text-foreground"> Tim Cera</strong>. The legacy Python application provided the foundation for the logic used to communicate with the NOAA CDO API.
+                                    This application was built with the assistance of AI coding assistants.
                                 </p>
                             </section>
 

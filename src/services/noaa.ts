@@ -54,17 +54,58 @@ export class NoaaService {
         return { token: this.token };
     }
 
-    /**
-     * Helper to wrap URLs with a CORS proxy in production.
-     * We use corsproxy.io because it forwards custom headers (like 'token'),
-     * whereas allorigins often strips them.
-     */
-    private getUrl(endpoint: string): string {
-        const url = `${BASE_NOAA}${endpoint}`;
+
+
+    async findStationsByCity(city: string, limit = 20, buffer = 0.25): Promise<Station[]> {
+        const cacheKey = `search_${city}_${limit}_${buffer}`;
+        const cached = getCache<Station[]>(cacheKey);
+        if (cached) return cached;
+
+        // 1. Geocode city
+        const geoRes = await axios.get(NOMINATIM_BASE, {
+            params: { q: city, format: 'json', limit: 1 }
+        });
+
+        if (!geoRes.data || geoRes.data.length === 0) return [];
+
+        const { lat, lon } = geoRes.data[0];
+        const latNum = parseFloat(lat);
+        const lonNum = parseFloat(lon);
+
+        return this.findStationsByCoords(latNum, lonNum, limit, buffer);
+    }
+
+    async request<T>(endpoint: string, params: Record<string, any> = {}): Promise<T> {
+        // Construct full URL with params for the target service
+        const url = new URL(`${BASE_NOAA}${endpoint}`);
+
+        // Handle array params (like datatypes) manually to match NOAA expectation if needed,
+        // but standard URLSearchParams handles repeats if we append carefully.
+        // Assuming simple params for now or let URLSearchParams handle it.
+        Object.keys(params).forEach(key => {
+            const val = params[key];
+            if (Array.isArray(val)) {
+                val.forEach(v => url.searchParams.append(key, v));
+            } else if (val !== undefined && val !== null) {
+                url.searchParams.append(key, String(val));
+            }
+        });
+
+        const fullTargetUrl = url.toString();
+        let requestUrl = fullTargetUrl;
+
+        // If Production, wrap with Proxy
         if (import.meta.env.PROD) {
-            return `https://corsproxy.io/?${encodeURIComponent(url)}`;
+            // corsproxy.io expects encoded target URL
+            requestUrl = `https://corsproxy.io/?${encodeURIComponent(fullTargetUrl)}`;
         }
-        return url;
+
+        // Perform request. Note: we pass empty params because we baked them into the URL.
+        const res = await axios.get(requestUrl, {
+            headers: this.headers
+        });
+
+        return res.data;
     }
 
     async findStationsByCity(city: string, limit = 20, buffer = 0.25): Promise<Station[]> {
@@ -94,17 +135,14 @@ export class NoaaService {
         // extent order: minLat, minLon, maxLat, maxLon
         const extent = `${lat - buffer},${lon - buffer},${lat + buffer},${lon + buffer}`;
 
-        const res = await axios.get(this.getUrl('/stations'), {
-            headers: this.headers,
-            params: {
-                datasetid: 'GHCND',
-                datatypeid: 'PRCP',
-                limit,
-                extent
-            }
+        const data: any = await this.request('/stations', {
+            datasetid: 'GHCND',
+            datatypeid: 'PRCP',
+            limit,
+            extent
         });
 
-        const stations = (res.data.results || []).map((st: any) => ({
+        const stations = (data.results || []).map((st: any) => ({
             id: st.id,
             name: st.name || '',
             latitude: st.latitude,
@@ -123,15 +161,12 @@ export class NoaaService {
         const cached = getCache<import('../types').DataType[]>(cacheKey);
         if (cached) return cached;
 
-        const res = await axios.get(this.getUrl('/datatypes'), {
-            headers: this.headers,
-            params: {
-                datasetid: 'GHCND',
-                stationid: stationId.includes(':') ? stationId : `GHCND:${stationId}`,
-            }
+        const data: any = await this.request('/datatypes', {
+            datasetid: 'GHCND',
+            stationid: stationId.includes(':') ? stationId : `GHCND:${stationId}`,
         });
 
-        const types = (res.data.results || []).map((t: any) => ({
+        const types = (data.results || []).map((t: any) => ({
             id: t.id,
             name: t.name,
             mindate: t.mindate,
@@ -144,18 +179,8 @@ export class NoaaService {
     }
 
     async fetchData({ stationIds, startDate, endDate, units = 'standard', datatypes = ['PRCP'] }: import('../types').FetchDataParams): Promise<RainfallData[]> {
-        // We'll fetch for all stations and datatypes.
-        // NOAA API allows stationid to be repeated, or we can just parallelize requests if needed.
-        // The API per station is safer for rate limits and simplicity since we need to track source.
-
         const promises = stationIds.map(async (sid) => {
             const id = sid.includes(':') ? sid : `GHCND:${sid}`;
-            // we will fetch each datatype ? No, datatypes can be filtered in params? 
-            // actually the API allows datatypeid to be repeated.
-
-            // To properly track "which datatype this value belongs to", we might want separate requests 
-            // OR we rely on the result payload containing datatype. The result payload DOES contain 'datatype'.
-
             const cacheKey = `data_${sid}_${startDate}_${endDate}_${units}_${datatypes.join(',')}`;
             const cached = getCache<RainfallData[]>(cacheKey);
             if (cached) return cached;
@@ -172,48 +197,12 @@ export class NoaaService {
                     enddate: endDate,
                     units: units === 'metric' ? 'metric' : 'standard',
                     limit,
-                    offset
+                    offset,
+                    datatypeid: datatypes // Array handling in request() covers this
                 };
 
-                // Add datatypes. axios serializer for arrays repeats the key 'datatypeid=X&datatypeid=Y'
-                // But we need to make sure axios handles this array correctly. 
-                // By default axios might use brackets. Let's explicitly loop if needed or check axios config.
-                // Simpler: just join with nothing if we custom serialize, but axios 'params' usually does brackets []
-                // We'll manually construct the search params to be safe or rely on axios 
-                // but standard noaa api usage from other tools suggests repeated keys.
-                // Let's manually filter results if we just request strict or use a loop.
-                // Actually, let's just pass `datatypeid` in params. Axios by default mimics PHP array[] 
-                // we'll need to use paramsSerializer if we want repeated keys without brackets.
-                // For now, let's keep it simple: pass datatypes individually if count is small, 
-                // or just rely on 'PRCP' default if none.
-
-                // However, to keep it simple and robust, let's just fetch everything for the station 
-                // if datatypes list is empty, or filter if provided. 
-                // Actually, user wants specific types. 
-
-                // Let's use a custom paramsSerializer for axios to be safe with NOAA
-
-                const res = await axios.get(this.getUrl('/data'), {
-                    headers: this.headers,
-                    params: {
-                        ...params,
-                        datatypeid: datatypes
-                    },
-                    paramsSerializer: params => {
-                        const search = new URLSearchParams();
-                        for (const key of Object.keys(params)) {
-                            const val = params[key];
-                            if (Array.isArray(val)) {
-                                val.forEach(v => search.append(key, v));
-                            } else {
-                                search.append(key, val);
-                            }
-                        }
-                        return search.toString();
-                    }
-                });
-
-                const results = res.data.results || [];
+                const data: any = await this.request('/data', params);
+                const results = data.results || [];
                 allResults = [...allResults, ...results];
 
                 if (results.length < limit) break;
