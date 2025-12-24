@@ -56,24 +56,7 @@ export class NoaaService {
 
 
 
-    async findStationsByCity(city: string, limit = 20, buffer = 0.25): Promise<Station[]> {
-        const cacheKey = `search_${city}_${limit}_${buffer}`;
-        const cached = getCache<Station[]>(cacheKey);
-        if (cached) return cached;
 
-        // 1. Geocode city
-        const geoRes = await axios.get(NOMINATIM_BASE, {
-            params: { q: city, format: 'json', limit: 1 }
-        });
-
-        if (!geoRes.data || geoRes.data.length === 0) return [];
-
-        const { lat, lon } = geoRes.data[0];
-        const latNum = parseFloat(lat);
-        const lonNum = parseFloat(lon);
-
-        return this.findStationsByCoords(latNum, lonNum, limit, buffer);
-    }
 
     async request<T>(endpoint: string, params: Record<string, any> = {}): Promise<T> {
         // Construct full URL with params for the target service
