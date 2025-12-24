@@ -1,0 +1,123 @@
+import { useState } from 'react';
+import axios from 'axios';
+import { Search, Loader2, MapPin } from 'lucide-react';
+
+import { NoaaService } from '../services/noaa';
+import type { Station } from '../types';
+
+interface SearchProps {
+    noaaService: NoaaService;
+    onStationsFound: (stations: Station[], cityCenter?: [number, number]) => void;
+}
+
+export function StationSearch({ noaaService, onStationsFound }: SearchProps) {
+    const [query, setQuery] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [searched, setSearched] = useState(false);
+
+    const handleSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!query.trim()) return;
+
+        setLoading(true);
+        setSearched(false);
+        try {
+            const stations = await noaaService.findStationsByCity(query);
+
+            // Calculate approximate center if stations found, else rely on map default
+            let center: [number, number] | undefined;
+            if (stations.length > 0) {
+                // simple average
+                const lat = stations.reduce((sum, s) => sum + s.latitude, 0) / stations.length;
+                const lon = stations.reduce((sum, s) => sum + s.longitude, 0) / stations.length;
+                center = [lat, lon];
+            }
+
+            onStationsFound(stations, center);
+            setSearched(true);
+        } catch (error) {
+            console.error(error);
+            let message = 'Failed to search stations.';
+            if (axios.isAxiosError(error) && error.response?.status === 401) {
+                message = 'Invalid API Token. Please check your settings.';
+            } else if (axios.isAxiosError(error) && error.response?.status === 503) {
+                message = 'NOAA Service unavailable.';
+            }
+            alert(message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleLocation = () => {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser');
+            return;
+        }
+
+        setLoading(true);
+        setSearched(false);
+
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                try {
+                    const { latitude, longitude } = position.coords;
+                    const stations = await noaaService.findStationsByCoords(latitude, longitude);
+                    onStationsFound(stations, [latitude, longitude]);
+                    setSearched(true);
+                    setQuery(`Current Location (${latitude.toFixed(2)}, ${longitude.toFixed(2)})`);
+                } catch (error) {
+                    console.error(error);
+                    alert('Failed to find stations near your location.');
+                } finally {
+                    setLoading(false);
+                }
+            },
+            (error) => {
+                console.error(error);
+                setLoading(false);
+                if (error.code === error.PERMISSION_DENIED) {
+                    alert('Location permission denied. Pleaase enable location services.');
+                } else {
+                    alert('Unable to retrieve your location.');
+                }
+            }
+        );
+    };
+
+    return (
+        <div className="flex flex-col gap-4">
+            <form onSubmit={handleSearch} className="flex flex-wrap gap-2">
+                <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Enter a city (e.g., Asheville, NC)"
+                    className="flex-1 min-w-0 px-4 py-2 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all"
+                />
+                <button
+                    type="button"
+                    onClick={handleLocation}
+                    disabled={loading}
+                    title="Use my location"
+                    className="px-3 py-2 bg-secondary text-secondary-foreground border border-input rounded-md hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center"
+                >
+                    <MapPin className="h-4 w-4" />
+                </button>
+                <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-2 whitespace-nowrap"
+                >
+                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Search className="h-4 w-4" />}
+                    Search
+                </button>
+            </form>
+            {searched && (
+                <p className="text-sm text-muted-foreground animate-in fade-in slide-in-from-top-1">
+                    Search complete. Check the map for results.
+                </p>
+            )}
+        </div>
+    );
+}
