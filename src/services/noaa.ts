@@ -1,8 +1,9 @@
 import axios from 'axios';
 import type { Station, RainfallData } from '../types';
 
-const API_BASE = '/api/noaa';
-const NOMINATIM_BASE = '/api/nominatim';
+// Use direct URLs for both dev and prod. Nominatim and NOAA support CORS.
+const API_BASE = 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
+const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 
 // Simple cache using localStorage
 const CACHE_PREFIX = 'noaa_cache_';

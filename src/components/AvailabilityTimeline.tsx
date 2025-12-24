@@ -25,20 +25,7 @@ export function AvailabilityTimeline({ stations, availability, loading }: Availa
     const { minDate, maxDate, totalDays } = useMemo(() => {
         let dates: Date[] = [];
         Object.values(availability).flat().forEach(d => {
-            if (d.mindate) {
-                const date = parseISO(d.mindate);
-                // Filter out likely invalid historical dates (e.g. 1781 default from some datasets if they lack proper metadata or refer to older records not relevant here)
-                // Actually 1781 IS valid for some stations, but if it distorts the view for others, maybe we clamp it?
-                // The user thinks 1781 is an error.
-                // Let's filter before 1800 or just trust the user wants to see it IF IT IS REAL, but suspects it is an error.
-                // I will filter out dates before 1800 as a safeguard, or perhaps check for '1781-01-01' specifically if it's a known placeholder.
-                // But let's just clamp the visualization if needed. 
-                // For now, let's keep it but if it's 1781-01-01 and user says it's error, maybe we should just ignore it?
-                // Actually, let's just accept it is real data but maybe the user wants to zoom?
-                // The user said "investigate why... seems like an error".
-                // I will add a check to exclude < 1800.
-                if (date.getFullYear() > 1800) dates.push(date);
-            }
+            if (d.mindate) dates.push(parseISO(d.mindate));
             if (d.maxdate) dates.push(parseISO(d.maxdate));
         });
 
