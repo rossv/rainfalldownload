@@ -2,7 +2,7 @@ import axios from 'axios';
 import type { Station, RainfallData } from '../types';
 
 // Use direct URLs for both dev and prod. Nominatim and NOAA support CORS.
-const API_BASE = 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
+const BASE_NOAA = 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 
 // Simple cache using localStorage
@@ -54,6 +54,19 @@ export class NoaaService {
         return { token: this.token };
     }
 
+    /**
+     * Helper to wrap URLs with a CORS proxy in production.
+     * We use corsproxy.io because it forwards custom headers (like 'token'),
+     * whereas allorigins often strips them.
+     */
+    private getUrl(endpoint: string): string {
+        const url = `${BASE_NOAA}${endpoint}`;
+        if (import.meta.env.PROD) {
+            return `https://corsproxy.io/?${encodeURIComponent(url)}`;
+        }
+        return url;
+    }
+
     async findStationsByCity(city: string, limit = 20, buffer = 0.25): Promise<Station[]> {
         const cacheKey = `search_${city}_${limit}_${buffer}`;
         const cached = getCache<Station[]>(cacheKey);
@@ -81,7 +94,7 @@ export class NoaaService {
         // extent order: minLat, minLon, maxLat, maxLon
         const extent = `${lat - buffer},${lon - buffer},${lat + buffer},${lon + buffer}`;
 
-        const res = await axios.get(`${API_BASE}/stations`, {
+        const res = await axios.get(this.getUrl('/stations'), {
             headers: this.headers,
             params: {
                 datasetid: 'GHCND',
@@ -110,7 +123,7 @@ export class NoaaService {
         const cached = getCache<import('../types').DataType[]>(cacheKey);
         if (cached) return cached;
 
-        const res = await axios.get(`${API_BASE}/datatypes`, {
+        const res = await axios.get(this.getUrl('/datatypes'), {
             headers: this.headers,
             params: {
                 datasetid: 'GHCND',
@@ -180,7 +193,7 @@ export class NoaaService {
 
                 // Let's use a custom paramsSerializer for axios to be safe with NOAA
 
-                const res = await axios.get(`${API_BASE}/data`, {
+                const res = await axios.get(this.getUrl('/data'), {
                     headers: this.headers,
                     params: {
                         ...params,
