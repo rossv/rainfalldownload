@@ -47,6 +47,7 @@ export class NoaaService {
 
     constructor(token: string) {
         this.token = token;
+        console.log(`[RainfallDownloader] Service Initialized. Build: ${new Date().toISOString()}`);
     }
 
     private get headers() {

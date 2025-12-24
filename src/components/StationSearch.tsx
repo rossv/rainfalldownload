@@ -36,7 +36,19 @@ export function StationSearch({ noaaService, onStationsFound }: SearchProps) {
             onStationsFound(stations, center);
             setSearched(true);
         } catch (error) {
-            console.error(error);
+            console.error('Search failed:', error);
+            if (axios.isAxiosError(error)) {
+                console.error('Axios Error Details:', {
+                    code: error.code,
+                    message: error.message,
+                    response: {
+                        status: error.response?.status,
+                        statusText: error.response?.statusText,
+                        data: error.response?.data,
+                        headers: error.response?.headers
+                    }
+                });
+            }
             let message = 'Failed to search stations.';
             if (axios.isAxiosError(error) && error.response?.status === 401) {
                 message = 'Invalid API Token. Please check your settings.';
