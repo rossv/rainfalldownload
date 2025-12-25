@@ -23,9 +23,14 @@ export function Dashboard() {
     const [loading, setLoading] = useState(false);
     const [mapCenter, setMapCenter] = useState<[number, number] | undefined>(undefined);
 
+    const activeCredentials = preferences.credentials[preferences.providerId];
+
     const dataSource = useMemo<DataSource | null>(
-        () => createProvider(preferences.providerId, { apiKey: preferences.apiKey }),
-        [preferences.apiKey, preferences.providerId]
+        () => createProvider(preferences.providerId, {
+            credentials: activeCredentials,
+            apiKey: activeCredentials?.token ?? activeCredentials?.apiKey
+        }),
+        [activeCredentials, preferences.providerId]
     );
 
     const providerCapabilities = useMemo(

@@ -1,26 +1,25 @@
 import { Settings as SettingsIcon, X, Eye, EyeOff } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ProviderDefinition, ProviderId } from '../services/providers';
+import type { ProviderCredentials } from '../types/data-source';
 
 interface SettingsProps {
-    apiKey: string;
+    credentials: Record<ProviderId, ProviderCredentials>;
     providerId: ProviderId;
     providers: ProviderDefinition[];
-    onSave: (values: { apiKey: string; providerId: ProviderId }) => void;
+    onSave: (values: { credentials: Record<ProviderId, ProviderCredentials>; providerId: ProviderId }) => void;
     isOpen: boolean;
     onClose: () => void;
 }
 
-export function SettingsModal({ apiKey, providerId, providers, onSave, isOpen, onClose }: SettingsProps) {
-    const [key, setKey] = useState(apiKey);
+export function SettingsModal({ credentials: initialCredentials, providerId, providers, onSave, isOpen, onClose }: SettingsProps) {
     const [provider, setProvider] = useState<ProviderId>(providerId);
+    const [credentials, setCredentials] = useState<Record<ProviderId, ProviderCredentials>>(initialCredentials);
     const [showPassword, setShowPassword] = useState(false);
 
-    // Keep state in sync when preferences change while the modal is closed
-    useEffect(() => {
-        setKey(apiKey);
-        setProvider(providerId);
-    }, [apiKey, providerId]);
+    const providerDefinition = useMemo(() => providers.find(p => p.id === provider), [providers, provider]);
+    const currentCredentials = credentials[provider] ?? {};
+    const credentialValue = currentCredentials.token ?? currentCredentials.apiKey ?? '';
 
     if (!isOpen) return null;
 
@@ -56,14 +55,33 @@ export function SettingsModal({ apiKey, providerId, providers, onSave, isOpen, o
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium mb-1">API Token</label>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                            <label className="block text-sm font-medium">{providerDefinition?.auth?.label ?? 'API Token'}</label>
+                            {providerDefinition?.auth?.signupUrl && (
+                                <a
+                                    href={providerDefinition.auth.signupUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs text-primary hover:underline"
+                                >
+                                    Get a key
+                                </a>
+                            )}
+                        </div>
                         <div className="relative">
                             <input
                                 type={showPassword ? "text" : "password"}
-                                value={key}
-                                onChange={(e) => setKey(e.target.value)}
+                                value={credentialValue}
+                                onChange={(e) => setCredentials(prev => ({
+                                    ...prev,
+                                    [provider]: {
+                                        ...(prev[provider] ?? {}),
+                                        token: e.target.value,
+                                        apiKey: e.target.value
+                                    }
+                                }))}
                                 className="w-full px-3 py-2 pr-10 rounded-md border border-input bg-background"
-                                placeholder="Enter your token..."
+                                placeholder={providerDefinition?.auth?.placeholder ?? "Enter your token..."}
                             />
                             <button
                                 type="button"
@@ -74,16 +92,29 @@ export function SettingsModal({ apiKey, providerId, providers, onSave, isOpen, o
                             </button>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                            {providers.find(p => p.id === provider)?.capabilities.requiresApiKey
-                                ? 'Required to fetch data. Get one at NOAA or the selected provider.'
-                                : 'Optional depending on provider requirements.'}
+                            {providerDefinition?.auth?.helperText ?? (
+                                providerDefinition?.capabilities.requiresApiKey
+                                    ? 'Required to fetch data. Grab a key from the provider.'
+                                    : 'Optional depending on provider requirements.'
+                            )}
                         </p>
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4">
                         <button onClick={onClose} className="px-4 py-2 hover:bg-muted rounded-md transition-colors">Cancel</button>
                         <button
-                            onClick={() => { onSave({ apiKey: key.trim(), providerId: provider }); onClose(); }}
+                            onClick={() => {
+                                const cleaned = {
+                                    ...credentials,
+                                    [provider]: {
+                                        ...(credentials[provider] ?? {}),
+                                        token: credentialValue.trim(),
+                                        apiKey: credentialValue.trim()
+                                    }
+                                };
+                                onSave({ credentials: cleaned, providerId: provider });
+                                onClose();
+                            }}
                             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
                         >
                             Save
