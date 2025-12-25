@@ -36,3 +36,5 @@ export interface FetchDataParams {
     units?: 'standard' | 'metric';
     datatypes?: string[];
 }
+
+export * from './data-source';

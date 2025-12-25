@@ -2,14 +2,18 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 const STORAGE_KEY = 'rainfall_prefs';
 
+import type { ProviderId } from '../services/providers';
+
 interface Preferences {
     apiKey: string;
+    providerId: ProviderId;
     units: 'standard' | 'metric';
     darkMode: boolean;
 }
 
 const DEFAULT_PREFS: Preferences = {
     apiKey: '',
+    providerId: 'noaa',
     units: 'standard',
     darkMode: false
 };
@@ -17,6 +21,7 @@ const DEFAULT_PREFS: Preferences = {
 interface PreferencesContextValue {
     preferences: Preferences;
     updateApiKey: (key: string) => void;
+    setProvider: (providerId: Preferences['providerId']) => void;
     toggleDarkMode: () => void;
     setUnits: (units: 'standard' | 'metric') => void;
 }
@@ -43,11 +48,12 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     }, [prefs]);
 
     const updateApiKey = (key: string) => setPrefs(p => ({ ...p, apiKey: key }));
+    const setProvider = (providerId: Preferences['providerId']) => setPrefs(p => ({ ...p, providerId }));
     const toggleDarkMode = () => setPrefs(p => ({ ...p, darkMode: !p.darkMode }));
     const setUnits = (units: 'standard' | 'metric') => setPrefs(p => ({ ...p, units }));
 
     return (
-        <PreferencesContext.Provider value={{ preferences: prefs, updateApiKey, toggleDarkMode, setUnits }}>
+        <PreferencesContext.Provider value={{ preferences: prefs, updateApiKey, setProvider, toggleDarkMode, setUnits }}>
             {children}
         </PreferencesContext.Provider>
     );

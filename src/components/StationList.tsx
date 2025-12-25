@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import type { Station, DataType } from '../types';
-import { NoaaService } from '../services/noaa';
+import type { Station, DataType, DataSource } from '../types';
 import { ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -8,10 +7,10 @@ interface StationListProps {
     stations: Station[];
     selectedStations: Station[];
     onToggleStation: (station: Station) => void;
-    noaaService: NoaaService | null;
+    dataSource: DataSource | null;
 }
 
-export function StationList({ stations, selectedStations, onToggleStation, noaaService }: StationListProps) {
+export function StationList({ stations, selectedStations, onToggleStation, dataSource }: StationListProps) {
     const [expandedStationId, setExpandedStationId] = useState<string | null>(null);
     const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
     const [stationDetails, setStationDetails] = useState<Record<string, DataType[]>>({});
@@ -24,8 +23,8 @@ export function StationList({ stations, selectedStations, onToggleStation, noaaS
             return;
         }
 
-        if (!noaaService) {
-            alert('Add your NOAA API Token in Settings to load station details.');
+        if (!dataSource) {
+            alert('Configure your data provider in Settings to load station details.');
             return;
         }
 
@@ -35,7 +34,7 @@ export function StationList({ stations, selectedStations, onToggleStation, noaaS
         if (!stationDetails[stationId]) {
             setLoadingDetails(stationId);
             try {
-                const types = await noaaService.getAvailableDataTypes(stationId);
+                const types = await dataSource.getAvailableDataTypes(stationId);
                 setStationDetails(prev => ({ ...prev, [stationId]: types }));
             } catch (error) {
                 console.error("Failed to fetch station details", error);
@@ -111,7 +110,7 @@ export function StationList({ stations, selectedStations, onToggleStation, noaaS
                                                 <td className="px-4 py-3">
                                                     <button
                                                         onClick={() => toggleExpand(station.id)}
-                                                        disabled={!noaaService}
+                                                        disabled={!dataSource}
                                                         className="p-1 hover:bg-accent rounded-md transition-colors text-muted-foreground"
                                                     >
                                                         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -189,7 +188,7 @@ export function StationList({ stations, selectedStations, onToggleStation, noaaS
                                         <td className="px-4 py-3">
                                             <button
                                                 onClick={() => toggleExpand(station.id)}
-                                                disabled={!noaaService}
+                                                disabled={!dataSource}
                                                 className="p-1 hover:bg-accent rounded-md transition-colors text-muted-foreground"
                                             >
                                                 {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
