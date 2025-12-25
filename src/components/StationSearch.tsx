@@ -50,10 +50,14 @@ export function StationSearch({ noaaService, onStationsFound }: SearchProps) {
                 });
             }
             let message = 'Failed to search stations.';
-            if (axios.isAxiosError(error) && error.response?.status === 401) {
-                message = 'Invalid API Token. Please check your settings.';
-            } else if (axios.isAxiosError(error) && error.response?.status === 503) {
-                message = 'NOAA Service unavailable.';
+            if (axios.isAxiosError(error)) {
+                if (error.response?.status === 401) {
+                    message = 'Invalid API Token. Please check your settings.';
+                } else if (error.response?.status === 503) {
+                    message = 'NOAA Service unavailable.';
+                } else if (error.response?.status === 504 || error.code === 'ECONNABORTED') {
+                    message = 'NOAA service is responding slowly. The request timed out—please retry in a moment.';
+                }
             }
             alert(message);
         } finally {
