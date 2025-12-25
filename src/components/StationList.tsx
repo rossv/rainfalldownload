@@ -15,6 +15,8 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
     const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
     const [stationDetails, setStationDetails] = useState<Record<string, DataType[]>>({});
 
+    const sortedStations = [...stations].sort((a, b) => (b.datacoverage ?? 0) - (a.datacoverage ?? 0));
+
     const isSelected = (id: string) => selectedStations.some(s => s.id === id);
 
     const toggleExpand = async (stationId: string) => {
@@ -68,14 +70,14 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                        {stations.filter(s => isSelected(s.id)).length > 0 && (
+                        {sortedStations.filter(s => isSelected(s.id)).length > 0 && (
                             <>
                                 <tr className="bg-muted/50 border-b-2 border-primary/20">
                                     <td colSpan={6} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-primary">
                                         Selected Stations
                                     </td>
                                 </tr>
-                                {stations.filter(s => isSelected(s.id)).map((station) => {
+                                {sortedStations.filter(s => isSelected(s.id)).map((station) => {
                                     const expanded = expandedStationId === station.id;
                                     const loading = loadingDetails === station.id;
                                     const details = stationDetails[station.id];
@@ -156,7 +158,7 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                 </tr>
                             </>
                         )}
-                        {stations.filter(s => !isSelected(s.id)).map((station) => {
+                        {sortedStations.filter(s => !isSelected(s.id)).map((station) => {
                             const expanded = expandedStationId === station.id;
                             const loading = loadingDetails === station.id;
                             const details = stationDetails[station.id];
