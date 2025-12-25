@@ -37,7 +37,9 @@ const withDefaults = (stored: unknown): Preferences => {
 
     if (!isStoredPreferences(stored)) return defaults;
 
-    const providerId: ProviderId = listProviders().some(p => p.id === stored.providerId) ? stored.providerId : defaults.providerId;
+    const providerId: ProviderId = (listProviders().some(p => p.id === stored.providerId)
+        ? stored.providerId
+        : undefined) ?? defaults.providerId;
 
     const credentials: Record<ProviderId, ProviderCredentials> = {
         ...defaults.credentials,
