@@ -17,7 +17,8 @@ export function StationSearch({ dataSource, capabilities, onStationsFound }: Sea
     const [loading, setLoading] = useState(false);
     const [searched, setSearched] = useState(false);
 
-    const hasApiKey = Boolean(preferences.apiKey?.trim());
+    const activeCredentials = preferences.credentials[preferences.providerId];
+    const hasApiKey = Boolean(activeCredentials?.token?.trim() || activeCredentials?.apiKey?.trim());
     const searchEnabled = capabilities?.supportsStationSearch !== false;
 
     const handleSearch = async (e: React.FormEvent) => {

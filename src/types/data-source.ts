@@ -9,8 +9,18 @@ export interface DataSourceCapabilities {
     description?: string;
 }
 
+export interface ProviderCredentials {
+    /**
+     * Primary token or API key used to authenticate with the provider.
+     */
+    token?: string;
+    apiKey?: string;
+    username?: string;
+}
+
 export interface DataSourceOptions {
     apiKey?: string;
+    credentials?: ProviderCredentials;
 }
 
 export interface DataSource {

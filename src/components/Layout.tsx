@@ -3,14 +3,16 @@ import { CloudRain, Settings as SettingsIcon, Moon, Sun, HelpCircle } from 'luci
 import { usePreferences } from '../hooks/usePreferences';
 import { SettingsModal } from './SettingsModal';
 import { HelpModal } from './HelpModal';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { listProviders } from '../services/providers';
 
 export function Layout() {
-    const { preferences, toggleDarkMode, updateApiKey, setProvider } = usePreferences();
+    const { preferences, toggleDarkMode, updateCredentials, setProvider } = usePreferences();
     const [showSettings, setShowSettings] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
     const providers = listProviders();
+    const activeProvider = providers.find(p => p.id === preferences.providerId);
+    const credentialsVersion = useMemo(() => JSON.stringify(preferences.credentials), [preferences.credentials]);
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
@@ -24,7 +26,9 @@ export function Layout() {
                             <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
                                 Rainfall Downloader
                             </h1>
-                            <p className="text-xs text-muted-foreground">Multi-provider rainfall data interface</p>
+                            <p className="text-xs text-muted-foreground">
+                                {activeProvider ? `Using ${activeProvider.name}. Configure providers in Settings.` : 'Multi-provider rainfall data interface'}
+                            </p>
                         </div>
                     </Link>
 
@@ -67,12 +71,18 @@ export function Layout() {
             </footer>
 
             <SettingsModal
+                key={`${preferences.providerId}-${credentialsVersion}-${showSettings ? 'open' : 'closed'}`}
                 isOpen={showSettings}
                 onClose={() => setShowSettings(false)}
-                apiKey={preferences.apiKey}
                 providerId={preferences.providerId}
                 providers={providers}
-                onSave={({ apiKey, providerId }) => { updateApiKey(apiKey); setProvider(providerId); }}
+                credentials={preferences.credentials}
+                onSave={({ credentials, providerId }) => {
+                    Object.entries(credentials).forEach(([id, creds]) => {
+                        updateCredentials(id as (typeof providers)[number]['id'], creds);
+                    });
+                    setProvider(providerId);
+                }}
             />
 
             <HelpModal
