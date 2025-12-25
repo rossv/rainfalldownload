@@ -4,20 +4,34 @@ import { Search, Loader2, MapPin } from 'lucide-react';
 
 import { NoaaService } from '../services/noaa';
 import type { Station } from '../types';
+import { usePreferences } from '../hooks/usePreferences';
 
 interface SearchProps {
-    noaaService: NoaaService;
+    noaaService: NoaaService | null;
     onStationsFound: (stations: Station[], cityCenter?: [number, number]) => void;
 }
 
 export function StationSearch({ noaaService, onStationsFound }: SearchProps) {
+    const { preferences } = usePreferences();
     const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(false);
     const [searched, setSearched] = useState(false);
 
+    const hasApiKey = Boolean(preferences.apiKey?.trim());
+
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!query.trim()) return;
+
+        if (!hasApiKey) {
+            alert('Add your NOAA API Token in Settings before searching.');
+            return;
+        }
+
+        if (!noaaService) {
+            alert('NOAA service unavailable. Please add your API Token in Settings.');
+            return;
+        }
 
         setLoading(true);
         setSearched(false);
@@ -62,6 +76,16 @@ export function StationSearch({ noaaService, onStationsFound }: SearchProps) {
     };
 
     const handleLocation = () => {
+        if (!hasApiKey) {
+            alert('Add your NOAA API Token in Settings before searching.');
+            return;
+        }
+
+        if (!noaaService) {
+            alert('NOAA service unavailable. Please add your API Token in Settings.');
+            return;
+        }
+
         if (!navigator.geolocation) {
             alert('Geolocation is not supported by your browser');
             return;
@@ -110,7 +134,7 @@ export function StationSearch({ noaaService, onStationsFound }: SearchProps) {
                 <button
                     type="button"
                     onClick={handleLocation}
-                    disabled={loading}
+                    disabled={loading || !hasApiKey}
                     title="Use my location"
                     className="px-3 py-2 bg-secondary text-secondary-foreground border border-input rounded-md hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center"
                 >
@@ -118,13 +142,18 @@ export function StationSearch({ noaaService, onStationsFound }: SearchProps) {
                 </button>
                 <button
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || !hasApiKey}
                     className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-2 whitespace-nowrap"
                 >
                     {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Search className="h-4 w-4" />}
                     Search
                 </button>
             </form>
+            {!hasApiKey && (
+                <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 animate-in fade-in slide-in-from-top-1">
+                    Add your NOAA API Token in Settings (top right) to search for stations.
+                </p>
+            )}
             {searched && (
                 <p className="text-sm text-muted-foreground animate-in fade-in slide-in-from-top-1">
                     Search complete. Check the map for results.

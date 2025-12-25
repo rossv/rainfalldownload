@@ -8,7 +8,7 @@ interface StationListProps {
     stations: Station[];
     selectedStations: Station[];
     onToggleStation: (station: Station) => void;
-    noaaService: NoaaService;
+    noaaService: NoaaService | null;
 }
 
 export function StationList({ stations, selectedStations, onToggleStation, noaaService }: StationListProps) {
@@ -21,6 +21,11 @@ export function StationList({ stations, selectedStations, onToggleStation, noaaS
     const toggleExpand = async (stationId: string) => {
         if (expandedStationId === stationId) {
             setExpandedStationId(null);
+            return;
+        }
+
+        if (!noaaService) {
+            alert('Add your NOAA API Token in Settings to load station details.');
             return;
         }
 
@@ -106,6 +111,7 @@ export function StationList({ stations, selectedStations, onToggleStation, noaaS
                                                 <td className="px-4 py-3">
                                                     <button
                                                         onClick={() => toggleExpand(station.id)}
+                                                        disabled={!noaaService}
                                                         className="p-1 hover:bg-accent rounded-md transition-colors text-muted-foreground"
                                                     >
                                                         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -183,6 +189,7 @@ export function StationList({ stations, selectedStations, onToggleStation, noaaS
                                         <td className="px-4 py-3">
                                             <button
                                                 onClick={() => toggleExpand(station.id)}
+                                                disabled={!noaaService}
                                                 className="p-1 hover:bg-accent rounded-md transition-colors text-muted-foreground"
                                             >
                                                 {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}

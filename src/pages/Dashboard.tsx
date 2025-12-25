@@ -23,7 +23,10 @@ export function Dashboard() {
     const [loading, setLoading] = useState(false);
     const [mapCenter, setMapCenter] = useState<[number, number] | undefined>(undefined);
 
-    const noaaService = useMemo(() => new NoaaService(preferences.apiKey), [preferences.apiKey]);
+    const noaaService = useMemo(
+        () => preferences.apiKey ? new NoaaService(preferences.apiKey) : null,
+        [preferences.apiKey]
+    );
 
     const handleStationsFound = (found: Station[], center?: [number, number]) => {
         setStations(found);
@@ -47,6 +50,8 @@ export function Dashboard() {
 
     // Fetch availability when selected stations change
     useEffect(() => {
+        if (!noaaService) return;
+
         const fetchAvailability = async () => {
             const newTasks: { id: string, message: string, status: 'pending' | 'success' | 'error' }[] = [];
 
@@ -118,7 +123,7 @@ export function Dashboard() {
 
     const handleFetchData = async () => {
         if (selectedStations.length === 0) return;
-        if (!preferences.apiKey) {
+        if (!preferences.apiKey || !noaaService) {
             alert("Please configure your API Key in Settings first.");
             return;
         }
