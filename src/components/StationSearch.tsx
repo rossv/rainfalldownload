@@ -89,7 +89,7 @@ export function StationSearch({ noaaService, onStationsFound }: SearchProps) {
                 console.error(error);
                 setLoading(false);
                 if (error.code === error.PERMISSION_DENIED) {
-                    alert('Location permission denied. Pleaase enable location services.');
+                    alert('Location permission denied. Please enable location services.');
                 } else {
                     alert('Unable to retrieve your location.');
                 }
