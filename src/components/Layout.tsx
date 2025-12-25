@@ -4,11 +4,14 @@ import { usePreferences } from '../hooks/usePreferences';
 import { SettingsModal } from './SettingsModal';
 import { HelpModal } from './HelpModal';
 import { useState } from 'react';
+import { getProviderDefinition } from '../lib/providers';
 
 export function Layout() {
-    const { preferences, toggleDarkMode, updateApiKey } = usePreferences();
+    const { preferences, toggleDarkMode, updateProviderCredentials, setActiveProvider } = usePreferences();
     const [showSettings, setShowSettings] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
+
+    const activeProvider = getProviderDefinition(preferences.activeProviderId);
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
@@ -22,7 +25,9 @@ export function Layout() {
                             <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
                                 Rainfall Downloader
                             </h1>
-                            <p className="text-xs text-muted-foreground">NOAA Data Interface</p>
+                            <p className="text-xs text-muted-foreground">
+                                Data Provider: {activeProvider.name}
+                            </p>
                         </div>
                     </Link>
 
@@ -67,8 +72,9 @@ export function Layout() {
             <SettingsModal
                 isOpen={showSettings}
                 onClose={() => setShowSettings(false)}
-                apiKey={preferences.apiKey}
-                onSave={updateApiKey}
+                preferences={preferences}
+                onSaveCredentials={updateProviderCredentials}
+                onProviderChange={setActiveProvider}
             />
 
             <HelpModal

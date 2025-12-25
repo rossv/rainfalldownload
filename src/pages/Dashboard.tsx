@@ -4,7 +4,6 @@ import { StationMap } from '../components/StationMap';
 import { StationList } from '../components/StationList';
 import { StationSearch } from '../components/StationSearch';
 import { RainfallChart } from '../components/RainfallChart';
-import { NoaaService } from '../services/noaa';
 import type { Station, RainfallData } from '../types';
 import { downloadCSV, downloadSWMM } from '../lib/export';
 import { Loader2, Download, Search as SearchIcon } from 'lucide-react';
@@ -12,6 +11,8 @@ import { AvailabilityTimeline } from '../components/AvailabilityTimeline';
 import { StatusCenter } from '../components/StatusCenter';
 import { cn } from '../lib/utils';
 import { usePreferences } from '../hooks/usePreferences';
+import { createDataSource } from '../services/dataSourceFactory';
+import { getProviderDefinition, hasRequiredCredentials } from '../lib/providers';
 
 export function Dashboard() {
     const { preferences, setUnits } = usePreferences();
@@ -23,10 +24,13 @@ export function Dashboard() {
     const [loading, setLoading] = useState(false);
     const [mapCenter, setMapCenter] = useState<[number, number] | undefined>(undefined);
 
-    const noaaService = useMemo(
-        () => preferences.apiKey ? new NoaaService(preferences.apiKey) : null,
-        [preferences.apiKey]
+    const dataSource = useMemo(
+        () => createDataSource(preferences),
+        [preferences]
     );
+
+    const hasCredentials = hasRequiredCredentials(preferences.activeProviderId, preferences.providerCredentials);
+    const activeProvider = getProviderDefinition(preferences.activeProviderId);
 
     const handleStationsFound = (found: Station[], center?: [number, number]) => {
         setStations(found);
@@ -50,7 +54,7 @@ export function Dashboard() {
 
     // Fetch availability when selected stations change
     useEffect(() => {
-        if (!noaaService) return;
+        if (!dataSource) return;
 
         const fetchAvailability = async () => {
             const newTasks: { id: string, message: string, status: 'pending' | 'success' | 'error' }[] = [];
@@ -66,7 +70,7 @@ export function Dashboard() {
                 setAvailabilityLoading(prev => ({ ...prev, [station.id]: true }));
 
                 try {
-                    const result = await noaaService.getAvailableDataTypes(station.id);
+                    const result = await dataSource.getAvailableDataTypes(station.id);
 
                     // Clamp datatype dates to station's overall valid range
                     // This fixes the issue where NOAA API returns global dataset dates (e.g. 1781) for individual datatypes
@@ -108,7 +112,7 @@ export function Dashboard() {
         };
 
         fetchAvailability();
-    }, [selectedStations, noaaService, stationAvailability, availabilityLoading]);
+    }, [selectedStations, dataSource, stationAvailability, availabilityLoading]);
 
     const availableDataTypes = useMemo(() => {
         const allTypes = new Map<string, import('../types').DataType>();
@@ -123,8 +127,8 @@ export function Dashboard() {
 
     const handleFetchData = async () => {
         if (selectedStations.length === 0) return;
-        if (!preferences.apiKey || !noaaService) {
-            alert("Please configure your API Key in Settings first.");
+        if (!hasCredentials || !dataSource) {
+            alert(`Please configure your ${activeProvider.name} credentials in Settings first.`);
             return;
         }
 
@@ -132,7 +136,7 @@ export function Dashboard() {
         setStatusTasks(prev => [...prev, { id: 'fetch-rain', message: 'Downloading rainfall data...', status: 'pending' }]);
 
         try {
-            const data = await noaaService.fetchData({
+            const data = await dataSource.fetchData({
                 stationIds: selectedStations.map(s => s.id),
                 startDate: dateRange.start,
                 endDate: dateRange.end,
@@ -172,7 +176,7 @@ export function Dashboard() {
                         <h2 className="font-semibold text-lg flex items-center gap-2">
                             <SearchIcon className="h-4 w-4 text-primary" /> Find Stations
                         </h2>
-                        <StationSearch noaaService={noaaService} onStationsFound={handleStationsFound} />
+                        <StationSearch dataSource={dataSource} onStationsFound={handleStationsFound} />
                     </section>
 
                     <div className="flex-1 min-h-[300px] border border-border rounded-xl overflow-hidden shadow-sm relative">
@@ -193,7 +197,7 @@ export function Dashboard() {
                             stations={stations}
                             selectedStations={selectedStations}
                             onToggleStation={toggleStation}
-                            noaaService={noaaService}
+                            dataSource={dataSource}
                         />
                     </div>
 
