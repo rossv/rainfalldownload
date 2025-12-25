@@ -4,11 +4,13 @@ import { usePreferences } from '../hooks/usePreferences';
 import { SettingsModal } from './SettingsModal';
 import { HelpModal } from './HelpModal';
 import { useState } from 'react';
+import { listProviders } from '../services/providers';
 
 export function Layout() {
-    const { preferences, toggleDarkMode, updateApiKey } = usePreferences();
+    const { preferences, toggleDarkMode, updateApiKey, setProvider } = usePreferences();
     const [showSettings, setShowSettings] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
+    const providers = listProviders();
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
@@ -22,7 +24,7 @@ export function Layout() {
                             <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
                                 Rainfall Downloader
                             </h1>
-                            <p className="text-xs text-muted-foreground">NOAA Data Interface</p>
+                            <p className="text-xs text-muted-foreground">Multi-provider rainfall data interface</p>
                         </div>
                     </Link>
 
@@ -68,7 +70,9 @@ export function Layout() {
                 isOpen={showSettings}
                 onClose={() => setShowSettings(false)}
                 apiKey={preferences.apiKey}
-                onSave={updateApiKey}
+                providerId={preferences.providerId}
+                providers={providers}
+                onSave={({ apiKey, providerId }) => { updateApiKey(apiKey); setProvider(providerId); }}
             />
 
             <HelpModal

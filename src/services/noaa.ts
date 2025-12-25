@@ -1,11 +1,11 @@
 import axios from 'axios';
-import type { Station, RainfallData } from '../types';
+import type { Station, RainfallData, DataSource } from '../types';
+import type { DataSourceCapabilities } from '../types/data-source';
 
-// Use direct URLs for both dev and prod. Nominatim and NOAA support CORS.
+// NOAA-specific constants kept private to the provider implementation.
 const BASE_NOAA = 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 
-// Simple cache using localStorage
 const CACHE_PREFIX = 'noaa_cache_';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -42,8 +42,24 @@ function setCache<T>(key: string, value: T) {
     }
 }
 
-export class NoaaService {
+export const NOAA_CAPABILITIES: DataSourceCapabilities = {
+    id: 'noaa',
+    name: 'NOAA NCDC',
+    supportsStationSearch: true,
+    supportsGridInterpolation: false,
+    requiresApiKey: true,
+    description: 'NOAA Climate Data Online (GHCND)'
+};
+
+export class NoaaService implements DataSource {
+    static readonly ID = NOAA_CAPABILITIES.id;
+    static readonly NAME = NOAA_CAPABILITIES.name;
+
     private token: string;
+
+    readonly id = NoaaService.ID;
+    readonly name = NoaaService.NAME;
+    readonly capabilities: DataSourceCapabilities = NOAA_CAPABILITIES;
 
     constructor(token: string) {
         this.token = token;
