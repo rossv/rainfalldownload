@@ -37,7 +37,21 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
             setLoadingDetails(stationId);
             try {
                 const types = await dataSource.getAvailableDataTypes(stationId);
-                setStationDetails(prev => ({ ...prev, [stationId]: types }));
+
+                // Find existing station data to get limits
+                const station = stations.find(s => s.id === stationId) || selectedStations.find(s => s.id === stationId);
+
+                const clampedTypes = types.map(t => {
+                    let minD = t.mindate;
+                    let maxD = t.maxdate;
+
+                    if (station?.mindate && minD < station.mindate) minD = station.mindate;
+                    if (station?.maxdate && maxD > station.maxdate) maxD = station.maxdate;
+
+                    return { ...t, mindate: minD, maxdate: maxD };
+                });
+
+                setStationDetails(prev => ({ ...prev, [stationId]: clampedTypes }));
             } catch (error) {
                 console.error("Failed to fetch station details", error);
             } finally {

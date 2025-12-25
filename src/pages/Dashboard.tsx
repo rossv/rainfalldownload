@@ -131,6 +131,21 @@ export function Dashboard() {
         return Array.from(allTypes.values());
     }, [selectedStations, stationAvailability]);
 
+
+    const stationsWithData = useMemo(() => {
+        return new Set(rainfallData.map(d => d.stationId).filter(Boolean) as string[]);
+    }, [rainfallData]);
+
+    const handleDownloadSingleCSV = (station: Station) => {
+        const stationData = rainfallData.filter(d => d.stationId === station.id);
+        if (stationData.length > 0) downloadCSV([station], stationData);
+    };
+
+    const handleDownloadSingleSWMM = (station: Station) => {
+        const stationData = rainfallData.filter(d => d.stationId === station.id);
+        if (stationData.length > 0) downloadSWMM([station], stationData);
+    };
+
     const handleFetchData = async () => {
         if (selectedStations.length === 0) return;
         if (!dataSource) {
@@ -139,25 +154,94 @@ export function Dashboard() {
         }
 
         setLoading(true);
-        setStatusTasks(prev => [...prev, { id: 'fetch-rain', message: 'Downloading rainfall data...', status: 'pending' }]);
+        const taskId = 'fetch-rain-batch';
+        // Clear old specific error tasks if any
+        setStatusTasks(prev => prev.filter(t => !t.id.startsWith('err-')));
+        setStatusTasks(prev => [...prev, { id: taskId, message: `Downloading data for ${selectedStations.length} stations...`, status: 'pending' }]);
 
-        try {
-            const data = await dataSource.fetchData({
-                stationIds: selectedStations.map(s => s.id),
-                startDate: dateRange.start,
-                endDate: dateRange.end,
-                units: preferences.units,
-                datatypes: selectedDataTypes
-            });
-            setRainfallData(data);
-            setStatusTasks(prev => prev.map(t => t.id === 'fetch-rain' ? { ...t, message: `Loaded ${data.length} records`, status: 'success' } : t));
-        } catch (e) {
-            console.error(e);
-            setStatusTasks(prev => prev.map(t => t.id === 'fetch-rain' ? { ...t, message: 'Failed to download data', status: 'error' } : t));
-        } finally {
-            setLoading(false);
-            setTimeout(() => setStatusTasks(prev => prev.filter(t => t.id !== 'fetch-rain')), 3000);
+        const fetchStationData = async (station: Station) => {
+            try {
+                // We fetch one by one to isolate errors
+                const data = await dataSource.fetchData({
+                    stationIds: [station.id],
+                    startDate: dateRange.start,
+                    endDate: dateRange.end,
+                    units: preferences.units,
+                    datatypes: selectedDataTypes
+                });
+                return { success: true, station, data };
+            } catch (error: any) {
+                let msg = error.message || 'Unknown error';
+                // enhance error message if possible
+                if (error.response) {
+                    msg = `HTTP ${error.response.status}`;
+                    if (error.response.statusText) msg += ` ${error.response.statusText}`;
+                } else if (error.code === 'ECONNABORTED') {
+                    msg = 'Timeout';
+                }
+                return { success: false, station, error: msg };
+            }
+        };
+
+        const results = await Promise.all(selectedStations.map(fetchStationData));
+
+        const successfulData = results
+            .filter((r): r is { success: true, station: Station, data: RainfallData[] } => r.success)
+            .flatMap(r => r.data);
+
+        const errors = results
+            .filter((r): r is { success: false, station: Station, error: string } => !r.success);
+
+        setRainfallData(successfulData);
+
+        if (errors.length === 0) {
+            setStatusTasks(prev => prev.map(t => t.id === taskId ? {
+                ...t,
+                message: `Loaded ${successfulData.length} records from ${selectedStations.length} stations`,
+                status: 'success'
+            } : t));
+            setTimeout(() => setStatusTasks(prev => prev.filter(t => t.id !== taskId)), 3000);
+        } else {
+            // Partial or full failure
+            const successCount = results.length - errors.length;
+            const summaryMsg = successCount > 0
+                ? `Partial Success: ${successCount} ok, ${errors.length} failed.`
+                : `Failed to download data for all ${errors.length} stations.`;
+
+            setStatusTasks(prev => prev.map(t => t.id === taskId ? {
+                ...t,
+                message: summaryMsg,
+                status: 'error'
+            } : t));
+
+            // Add detailed error tasks (limit to 5 to avoid spam)
+            const MAX_ERRORS_SHOWN = 5;
+            const displayedErrors = errors.slice(0, MAX_ERRORS_SHOWN);
+
+            const newErrorTasks = displayedErrors.map(e => ({
+                id: `err-${e.station.id}-${Date.now()}`,
+                message: `${e.station.name}: ${e.error}`,
+                status: 'error' as const
+            }));
+
+            if (errors.length > MAX_ERRORS_SHOWN) {
+                newErrorTasks.push({
+                    id: `err-more-${Date.now()}`,
+                    message: `...and ${errors.length - MAX_ERRORS_SHOWN} more errors.`,
+                    status: 'error' as const
+                });
+            }
+
+            setStatusTasks(prev => [...prev, ...newErrorTasks]);
+
+            // Clear summary after 5s
+            setTimeout(() => setStatusTasks(prev => prev.filter(t => t.id !== taskId)), 5000);
+
+            // Clear detailed errors after 10s
+            setTimeout(() => setStatusTasks(prev => prev.filter(t => !t.id.startsWith('err-'))), 10000);
         }
+
+        setLoading(false);
     };
 
     const toggleDataType = (typeId: string) => {
@@ -167,6 +251,38 @@ export function Dashboard() {
                 : [...prev, typeId]
         );
     };
+
+    const dateConstraints = useMemo(() => {
+        if (selectedStations.length === 0) return { min: undefined, max: undefined };
+
+        // Collect all start and end dates from availability data if loaded, otherwise fall back to station metadata
+        const starts: Date[] = [];
+        const ends: Date[] = [];
+
+        selectedStations.forEach(s => {
+            const avail = stationAvailability[s.id];
+            if (avail && avail.length > 0) {
+                avail.forEach(a => {
+                    if (a.mindate) starts.push(new Date(a.mindate));
+                    if (a.maxdate) ends.push(new Date(a.maxdate));
+                });
+            } else {
+                if (s.mindate) starts.push(new Date(s.mindate));
+                if (s.maxdate) ends.push(new Date(s.maxdate));
+            }
+        });
+
+        if (starts.length === 0) return { min: undefined, max: undefined };
+
+        // Find overall min and max
+        const minDate = starts.reduce((a, b) => a < b ? a : b);
+        const maxDate = ends.reduce((a, b) => a > b ? a : b);
+
+        return {
+            min: minDate.toISOString().split('T')[0],
+            max: maxDate.toISOString().split('T')[0]
+        };
+    }, [selectedStations, stationAvailability]);
 
     return (
         <div className="flex flex-col min-h-screen bg-background p-4 md:p-6 gap-6">
@@ -203,47 +319,15 @@ export function Dashboard() {
                 <div className="flex flex-col gap-4 h-full overflow-hidden">
                     {/* Found Stations List */}
                     <div className="flex-1 min-h-0 border border-border rounded-xl overflow-hidden shadow-sm flex flex-col">
-                            <StationList
-                                stations={stations}
-                                selectedStations={selectedStations}
-                                onToggleStation={toggleStation}
-                                dataSource={dataSource}
-                            />
+                        <StationList
+                            stations={stations}
+                            selectedStations={selectedStations}
+                            onToggleStation={toggleStation}
+                            dataSource={dataSource}
+                        />
                     </div>
 
-                    {/* Selected Stations Persistent List */}
-                    <section className="flex-none h-1/3 min-h-[200px] bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col gap-3 overflow-hidden">
-                        <div className="flex justify-between items-center flex-none">
-                            <h2 className="font-semibold text-lg">Selected Stations ({selectedStations.length})</h2>
-                            <button
-                                onClick={() => setSelectedStations([])}
-                                className="text-xs text-muted-foreground hover:text-foreground"
-                            >
-                                Clear All
-                            </button>
-                        </div>
-                        <ul className="space-y-2 overflow-y-auto pr-2 flex-1">
-                            {selectedStations.length === 0 ? (
-                                <li className="text-sm text-muted-foreground italic text-center py-4">No stations selected</li>
-                            ) : (
-                                selectedStations.map(s => (
-                                    <li key={s.id} className="flex justify-between items-center text-sm p-2 bg-muted rounded-md border border-border">
-                                        <div className="overflow-hidden">
-                                            <div className="font-medium truncate" title={s.name}>{s.name}</div>
-                                            <div className="text-xs text-muted-foreground">{s.id}</div>
-                                        </div>
-                                        <button
-                                            onClick={() => toggleStation(s)}
-                                            className="text-muted-foreground hover:text-red-500 ml-2"
-                                            title="Remove"
-                                        >
-                                            &times;
-                                        </button>
-                                    </li>
-                                ))
-                            )}
-                        </ul>
-                    </section>
+
                 </div>
 
                 {/* Right Column: Query Parameters */}
@@ -251,22 +335,104 @@ export function Dashboard() {
                     <section className="flex-1 bg-card border border-border rounded-xl p-5 shadow-sm space-y-4 overflow-y-auto">
                         <h2 className="font-semibold text-lg">Query Parameters</h2>
                         <div className="space-y-4">
+                            {/* Selected Stations (Compact) */}
+                            <div className="border border-border rounded-lg p-3 bg-card/50">
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-sm font-medium">Selected Stations ({selectedStations.length})</label>
+                                    <button
+                                        onClick={() => setSelectedStations([])}
+                                        className="text-[10px] text-muted-foreground hover:text-foreground bg-muted/50 px-2 py-0.5 rounded"
+                                    >
+                                        Clear
+                                    </button>
+                                </div>
+
+                                <ul className="space-y-1 max-h-[150px] overflow-y-auto pr-1">
+                                    {selectedStations.length === 0 ? (
+                                        <li className="text-xs text-muted-foreground italic text-center py-2">No stations selected</li>
+                                    ) : (
+                                        selectedStations.map(s => {
+                                            const hasData = stationsWithData.has(s.id);
+                                            return (
+                                                <li key={s.id} className="flex justify-between items-center text-xs p-1.5 bg-background rounded border border-border group hover:border-primary/50 transition-colors">
+                                                    <div className="overflow-hidden flex-1 min-w-0 mr-2">
+                                                        <div className="font-medium truncate leading-tight" title={s.name}>{s.name}</div>
+                                                        <div className="text-[10px] text-muted-foreground leading-tight">{s.id}</div>
+                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                            {selectedDataTypes.map(typeId => {
+                                                                const isAvailable = stationAvailability[s.id]?.some(dt => dt.id === typeId);
+                                                                if (!isAvailable) return null;
+                                                                return (
+                                                                    <span
+                                                                        key={typeId}
+                                                                        className="px-1 py-0.5 rounded-[2px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 text-[9px] font-mono border border-emerald-200 dark:border-emerald-800 leading-none"
+                                                                        title={`${typeId} is available`}
+                                                                    >
+                                                                        {typeId}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        {hasData && (
+                                                            <div className="flex gap-1">
+                                                                <button
+                                                                    onClick={() => handleDownloadSingleCSV(s)}
+                                                                    className="px-1.5 py-0.5 text-[10px] bg-primary text-primary-foreground border border-primary rounded hover:bg-primary/90 transition-colors font-medium shadow-sm"
+                                                                    title="Download CSV"
+                                                                >
+                                                                    CSV
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDownloadSingleSWMM(s)}
+                                                                    className="px-1.5 py-0.5 text-[10px] bg-primary text-primary-foreground border border-primary rounded hover:bg-primary/90 transition-colors font-medium shadow-sm"
+                                                                    title="Download .dat"
+                                                                >
+                                                                    DAT
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        <button
+                                                            onClick={() => toggleStation(s)}
+                                                            className="text-muted-foreground hover:text-red-500 hover:bg-red-50 p-0.5 rounded transition-all opacity-60 group-hover:opacity-100"
+                                                            title="Remove"
+                                                        >
+                                                            &times;
+                                                        </button>
+                                                    </div>
+                                                </li>
+                                            );
+                                        })
+                                    )}
+                                </ul>
+                            </div>
+
                             <div>
                                 <label className="text-sm font-medium mb-1 block">Date Range</label>
                                 <div className="flex gap-2">
                                     <input
                                         type="date"
                                         value={dateRange.start}
+                                        min={dateConstraints.min}
+                                        max={dateConstraints.max}
                                         onChange={e => setDateRange(p => ({ ...p, start: e.target.value }))}
                                         className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
                                     />
                                     <input
                                         type="date"
                                         value={dateRange.end}
+                                        min={dateConstraints.min}
+                                        max={dateConstraints.max}
                                         onChange={e => setDateRange(p => ({ ...p, end: e.target.value }))}
                                         className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
                                     />
                                 </div>
+                                {dateConstraints.min && (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Available: {dateConstraints.min} to {dateConstraints.max}
+                                    </p>
+                                )}
                             </div>
 
                             {/* Data Types Selector */}
@@ -337,13 +503,13 @@ export function Dashboard() {
                                         onClick={() => downloadCSV(selectedStations, rainfallData)}
                                         className="w-full py-2 px-4 border border-border hover:bg-accent rounded-lg text-sm font-medium transition-colors text-center"
                                     >
-                                        Download .csv
+                                        Download Single .csv
                                     </button>
                                     <button
                                         onClick={() => downloadSWMM(selectedStations, rainfallData)}
                                         className="w-full py-2 px-4 border border-border hover:bg-accent rounded-lg text-sm font-medium transition-colors text-center"
                                     >
-                                        Download SWMM .dat
+                                        Download Single .dat
                                     </button>
                                 </div>
                             </div>
@@ -361,6 +527,9 @@ export function Dashboard() {
                             stations={selectedStations}
                             availability={stationAvailability}
                             loading={availabilityLoading}
+                            selectedStart={dateRange.start}
+                            selectedEnd={dateRange.end}
+                            onRangeChange={(start, end) => setDateRange({ start, end })}
                         />
                     ) : (
                         <div className="py-8 border border-border border-dashed rounded-xl flex items-center justify-center text-muted-foreground text-sm bg-muted/20">
@@ -369,9 +538,33 @@ export function Dashboard() {
                     )}
                 </div>
 
-                {/* Rainfall Chart */}
-                <div className="min-h-[400px]">
-                    <RainfallChart data={rainfallData} units={preferences.units} />
+                {/* Rainfall Charts - Stacked by Datatype */}
+                <div className="flex flex-col gap-6 min-h-[400px]">
+                    {rainfallData.length > 0 ? (
+                        Array.from(new Set(rainfallData.map(d => d.datatype || 'PRCP'))).map(dtype => {
+                            const chartData = rainfallData.filter(d => (d.datatype || 'PRCP') === dtype);
+                            const stationIds = new Set(chartData.map(d => d.stationId));
+                            const relevantStations = selectedStations.filter(s => stationIds.has(s.id));
+
+                            // Get friendly name
+                            const typeInfo = availableDataTypes.find(t => t.id === dtype);
+                            const copyTitle = typeInfo ? `${typeInfo.name} (${dtype})` : dtype;
+
+                            return (
+                                <RainfallChart
+                                    key={dtype}
+                                    data={chartData}
+                                    units={preferences.units}
+                                    stations={relevantStations}
+                                    title={copyTitle}
+                                />
+                            );
+                        })
+                    ) : (
+                        <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground border-dashed">
+                            No data loaded. Select stations and click "Fetch Rainfall Data".
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

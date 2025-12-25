@@ -20,7 +20,15 @@ let GreyIcon = L.icon({
     shadowUrl: iconShadow,
     iconSize: [25, 41],
     iconAnchor: [12, 41],
-    className: 'leaflet-marker-grey'
+    className: 'leaflet-marker-grey' // Defined in CSS with filter: grayscale(100%)
+});
+
+let RedIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    className: 'leaflet-marker-red' // CSS filter: hue-rotate
 });
 
 L.Marker.prototype.options.icon = DefaultIcon;
@@ -77,6 +85,15 @@ export function StationMap({ stations, selectedStations, onToggleStation, center
 
     return (
         <div className="h-full w-full rounded-lg overflow-hidden border border-border shadow-sm relative group">
+            <style>{`
+                .leaflet-marker-grey {
+                    filter: grayscale(100%);
+                }
+                .leaflet-marker-red {
+                    filter: hue-rotate(140deg) saturate(3) brightness(0.7); /* Adjust to make it red. Default blue is around 210deg. Red is 0. */
+                    /* Blue (210) + 150 = 360 (Red). */
+                }
+            `}</style>
             <MapContainer
                 center={center || [39.8283, -98.5795]}
                 zoom={center ? 10 : 4}
@@ -107,12 +124,20 @@ export function StationMap({ stations, selectedStations, onToggleStation, center
                         isOld = st.maxdate < thresholdDateStr;
                     }
 
+                    // Icon selection logic
+                    let icon = DefaultIcon;
+                    if (isSelected) {
+                        icon = RedIcon;
+                    } else if (isOld) {
+                        icon = GreyIcon;
+                    }
+
                     return (
                         <Marker
                             key={st.id}
                             position={[st.latitude, st.longitude]}
                             opacity={isSelected ? 1.0 : 0.6}
-                            icon={isOld ? GreyIcon : DefaultIcon}
+                            icon={icon}
                             eventHandlers={{
                                 click: () => onToggleStation(st),
                                 mouseover: () => setHoveredStation(st),
