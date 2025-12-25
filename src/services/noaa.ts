@@ -99,13 +99,18 @@ export class NoaaService {
 
         const fullTargetUrl = url.toString();
 
-        // If NOT in production (Development), simply use the target URL (Vite proxy handles it if configured, or direct if CORS supported)
-        if (!import.meta.env.PROD) {
-            const res = await axios.get(fullTargetUrl, { headers: this.headers });
+        // Always try direct NOAA endpoint first with a short timeout, regardless of environment.
+        try {
+            const res = await this.fetchWithRetry(fullTargetUrl, {
+                headers: this.headers,
+                timeout: 5000
+            });
             return res.data;
+        } catch (error) {
+            console.warn('[RainfallDownloader] Direct NOAA request failed, attempting proxies...', error);
         }
 
-        // PRODUCTION: Try Fallback Strategy
+        // Fallback Strategy
         const proxies = [
             `https://corsproxy.io/?${encodeURIComponent(fullTargetUrl)}`,
             `https://api.allorigins.win/raw?url=${encodeURIComponent(fullTargetUrl)}`
@@ -116,15 +121,18 @@ export class NoaaService {
         for (const proxyUrl of proxies) {
             try {
                 console.log(`[RainfallDownloader] Attempting via proxy: ${proxyUrl}`);
-                // allorigins doesn't always support custom headers nicely, but we try. 
+                // allorigins doesn't always support custom headers nicely, but we try.
                 // Note: NOAA requires 'token' header. corsproxy.io forwards it. allorigins might not.
                 // If allorigins fails to forward header, NOAA returns 400/401.
-                const res = await this.fetchWithRetry(proxyUrl, { headers: this.headers });
+                const res = await this.fetchWithRetry(proxyUrl, {
+                    headers: this.headers,
+                    timeout: 5000
+                });
                 return res.data;
             } catch (error) {
                 console.warn(`[RainfallDownloader] Proxy failed: ${proxyUrl}`, error);
                 lastError = error;
-                // If it's a 401/403 (Auth), switching proxy won't help, so throw immediately to avoid wasting time? 
+                // If it's a 401/403 (Auth), switching proxy won't help, so throw immediately to avoid wasting time?
                 // Actually 504 is our main enemy. We continue.
             }
         }
