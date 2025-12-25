@@ -62,46 +62,62 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                                 Welcome to the Rainfall Downloader!
                             </p>
                             <p>
-                                This comprehensive tool allows you to easily fetch, visualize, and export precipitation data from NOAA's extensive database.
+                                Fetch, visualize, and export precipitation records. NOAA CDO works today; additional providers are on the roadmap so you can pick the source that matches your coverage, latency, and credential needs.
                             </p>
 
                             <div className="space-y-4">
                                 <section>
-                                    <h3 className="text-foreground font-semibold mb-2">1. Find Stations</h3>
+                                    <h3 className="text-foreground font-semibold mb-2">Core workflow</h3>
+                                    <ol className="list-decimal ml-5 space-y-1">
+                                        <li>Use <strong>Find Stations</strong> to search by city/ZIP or pan the map, then select station markers.</li>
+                                        <li>Review availability timelines to confirm date ranges and data types (e.g., PRCP).</li>
+                                        <li>Choose date range, units (Standard/Metric), and data types, then click <strong>Fetch Rainfall Data</strong>.</li>
+                                        <li>Export the charted results as <strong>CSV</strong> or <strong>SWMM</strong> files.</li>
+                                    </ol>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-foreground font-semibold">Supported & upcoming providers</h3>
                                     <ul className="list-disc ml-5 space-y-1">
-                                        <li>Use the <strong>Find Stations</strong> panel to search by city, zip code, or manually navigate the map.</li>
-                                        <li>Stations will appear on the map as markers. Click on them to see details.</li>
+                                        <li><strong>NOAA CDO (live):</strong> Station-based daily/hourly precipitation; ~24 h latency; requires a free CDO token.</li>
+                                        <li><strong>NASA GPM IMERG (roadmap):</strong> 0.1° gridded, 30-min/daily; ~12–24 h latency; requires Earthdata Login token.</li>
+                                        <li><strong>Meteostat (roadmap):</strong> Station hourly/daily; ~1–3 h latency; no token; best coverage in Europe/NA.</li>
+                                        <li><strong>OpenWeatherMap (roadmap):</strong> Point current/forecast hourly precip; minute-level latency; free API key; daily archives limited.</li>
+                                    </ul>
+                                    <p className="text-xs">Known limits: per-token request caps (NOAA), coastal bias in some IMERG tiles, Meteostat station gaps, and OWM free-tier call limits.</p>
+                                </section>
+
+                                <section className="space-y-2">
+                                    <h3 className="text-foreground font-semibold">Get free tokens</h3>
+                                    <ul className="list-disc ml-5 space-y-1">
+                                        <li><strong>NOAA CDO:</strong> Request a token at <a className="text-primary hover:underline" href="https://www.ncdc.noaa.gov/cdo-web/token" target="_blank" rel="noreferrer">NCEI CDO</a>, then paste it into <strong>Settings</strong>.</li>
+                                        <li><strong>NASA Earthdata:</strong> Create an <a className="text-primary hover:underline" href="https://urs.earthdata.nasa.gov/" target="_blank" rel="noreferrer">Earthdata Login</a>, approve the GPM IMERG app, and generate an app-specific token.</li>
+                                        <li><strong>Meteostat:</strong> No key required; keep a contact email ready for the `User-Agent` header if requested.</li>
+                                        <li><strong>OpenWeatherMap:</strong> Sign up, create a key under <em>My API keys</em>, and verify the free-tier limits (1k calls/day at 1 Hz).</li>
                                     </ul>
                                 </section>
 
-                                <section>
-                                    <h3 className="text-foreground font-semibold mb-2">2. Select Stations</h3>
+                                <section className="space-y-2">
+                                    <h3 className="text-foreground font-semibold">Units, resolution, and latency</h3>
                                     <ul className="list-disc ml-5 space-y-1">
-                                        <li>Click on a station marker or select it from the list to add it to your selection.</li>
-                                        <li>You can select multiple stations to compare data or download in bulk.</li>
+                                        <li><strong>Units:</strong> NOAA returns tenths of mm (metric) or hundredths of inches (standard). IMERG/Meteostat use mm; OWM `rain`/`snow` fields are mm.</li>
+                                        <li><strong>Resolution:</strong> NOAA is station-based; IMERG is 0.1° grids; Meteostat covers stations; OWM is point current/forecast.</li>
+                                        <li><strong>Latency:</strong> NOAA ~24 h; IMERG ~12–24 h (Late/Final); Meteostat ~1–3 h; OWM near-real-time for current/forecast.</li>
                                     </ul>
                                 </section>
 
-                                <section>
-                                    <h3 className="text-foreground font-semibold mb-2">3. Configure Query</h3>
+                                <section className="space-y-2">
+                                    <h3 className="text-foreground font-semibold">Pick the right provider</h3>
                                     <ul className="list-disc ml-5 space-y-1">
-                                        <li><strong>Date Range:</strong> Choose the start and end dates for your data.</li>
-                                        <li><strong>Data Types:</strong> Select specific data types (e.g., Precipitation, Snowfall) available for the selected stations.</li>
-                                        <li><strong>Units:</strong> Toggle between Standard (inches) and Metric (mm).</li>
-                                    </ul>
-                                </section>
-
-                                <section>
-                                    <h3 className="text-foreground font-semibold mb-2">4. Fetch & Export</h3>
-                                    <ul className="list-disc ml-5 space-y-1">
-                                        <li>Click <strong>Fetch Rainfall Data</strong> to retrieve the records.</li>
-                                        <li>Visualize the data on the interactive chart.</li>
-                                        <li>Export the data as a <strong>CSV</strong> file or in <strong>SWMM</strong> format for hydraulic modeling.</li>
+                                        <li><strong>Known gauge near your site:</strong> NOAA CDO for QC’d station records and long archives.</li>
+                                        <li><strong>Ungauged basin or gridded forcing:</strong> NASA GPM IMERG for uniform coverage.</li>
+                                        <li><strong>Fast updates in Europe/NA:</strong> Meteostat for frequent refreshes.</li>
+                                        <li><strong>Quick-look or forecasts:</strong> OpenWeatherMap for near-term point precipitation.</li>
                                     </ul>
                                 </section>
 
                                 <div className="bg-muted p-3 rounded-md border border-border text-xs">
-                                    <strong>Note:</strong> You need a valid NOAA API Token to fetch data. Get one for free from NCDC NOAA and enter it in the Settings menu.
+                                    <strong>Tip:</strong> Enter your NOAA token in <strong>Settings</strong> today, and pre-stage Earthdata/OWM credentials so you can plug them in as new connectors land.
                                 </div>
                             </div>
                         </div>
