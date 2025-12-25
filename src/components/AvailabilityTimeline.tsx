@@ -53,7 +53,8 @@ export function AvailabilityTimeline({ stations, availability, loading }: Availa
         const duration = differenceInDays(endDate, startDate);
 
         const left = Math.max(0, (startDiff / totalDays) * 100);
-        const width = Math.min(100 - left, (duration / totalDays) * 100);
+        const dayWidth = 100 / Math.max(totalDays, 1);
+        const width = Math.min(100 - left, Math.max(dayWidth, (duration / totalDays) * 100));
 
         return { left: `${left}%`, width: `${width}%` };
     };
