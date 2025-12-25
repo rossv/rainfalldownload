@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 const STORAGE_KEY = 'rainfall_prefs';
 
@@ -14,7 +14,16 @@ const DEFAULT_PREFS: Preferences = {
     darkMode: false
 };
 
-export function usePreferences() {
+interface PreferencesContextValue {
+    preferences: Preferences;
+    updateApiKey: (key: string) => void;
+    toggleDarkMode: () => void;
+    setUnits: (units: 'standard' | 'metric') => void;
+}
+
+const PreferencesContext = createContext<PreferencesContextValue | null>(null);
+
+export function PreferencesProvider({ children }: { children: ReactNode }) {
     const [prefs, setPrefs] = useState<Preferences>(() => {
         try {
             const stored = localStorage.getItem(STORAGE_KEY);
@@ -37,5 +46,17 @@ export function usePreferences() {
     const toggleDarkMode = () => setPrefs(p => ({ ...p, darkMode: !p.darkMode }));
     const setUnits = (units: 'standard' | 'metric') => setPrefs(p => ({ ...p, units }));
 
-    return { preferences: prefs, updateApiKey, toggleDarkMode, setUnits };
+    return (
+        <PreferencesContext.Provider value={{ preferences: prefs, updateApiKey, toggleDarkMode, setUnits }}>
+            {children}
+        </PreferencesContext.Provider>
+    );
+}
+
+export function usePreferences() {
+    const context = useContext(PreferencesContext);
+    if (!context) {
+        throw new Error('usePreferences must be used within a PreferencesProvider');
+    }
+    return context;
 }
