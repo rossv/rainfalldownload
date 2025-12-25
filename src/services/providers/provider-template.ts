@@ -18,8 +18,6 @@ export class TemplateProvider implements DataSource {
     readonly name = TEMPLATE_CAPABILITIES.name;
     readonly capabilities = TEMPLATE_CAPABILITIES;
 
-    constructor(private apiKey?: string) { }
-
     async findStationsByCity(_city: string, _limit = 20, _buffer = 0.25): Promise<Station[]> {
         throw new Error('Station search not yet implemented for this provider');
     }
