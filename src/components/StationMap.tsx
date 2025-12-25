@@ -128,7 +128,7 @@ export function StationMap({ stations, selectedStations, onToggleStation, center
             </MapContainer>
 
             {/* Station Status Overlay */}
-            <div className="absolute bottom-4 left-4 z-[1000] bg-background/90 backdrop-blur-sm border border-border p-4 rounded-lg shadow-lg max-w-xs transition-all duration-300 pointer-events-none">
+            <div className="absolute bottom-4 left-4 z-20 bg-background/90 backdrop-blur-sm border border-border p-4 rounded-lg shadow-lg max-w-xs transition-all duration-300 pointer-events-none">
                 {activeDisplayStation ? (
                     <div className="space-y-1">
                         <h3 className="font-bold text-sm leading-tight text-foreground">{activeDisplayStation.name}</h3>
