@@ -58,6 +58,14 @@ export function Dashboard() {
     const [statusTasks, setStatusTasks] = useState<{ id: string, message: string, status: 'pending' | 'success' | 'error' }[]>([]);
     const [selectedDataTypes, setSelectedDataTypes] = useState<string[]>(['PRCP']);
 
+    // Track the parameters used for the last successful fetch to determine "staleness"
+    const [lastFetchedParams, setLastFetchedParams] = useState<{
+        stationIds: string[];
+        dateRange: { start: string; end: string };
+        dataTypes: string[];
+        timestamp: number;
+    } | null>(null);
+
     // Fetch availability when selected stations change
     useEffect(() => {
         if (!dataSource) return;
@@ -201,6 +209,15 @@ export function Dashboard() {
                 status: 'success'
             } : t));
             setTimeout(() => setStatusTasks(prev => prev.filter(t => t.id !== taskId)), 3000);
+
+            // Update last fetched params on full success
+            setLastFetchedParams({
+                stationIds: selectedStations.map(s => s.id).sort(),
+                dateRange: { ...dateRange },
+                dataTypes: [...selectedDataTypes].sort(),
+                timestamp: Date.now()
+            });
+
         } else {
             // Partial or full failure
             const successCount = results.length - errors.length;
@@ -213,6 +230,16 @@ export function Dashboard() {
                 message: summaryMsg,
                 status: 'error'
             } : t));
+
+            // If we got some data, still update the params so the UI shows "Data Ready" (even if partial)
+            if (successfulData.length > 0) {
+                setLastFetchedParams({
+                    stationIds: selectedStations.map(s => s.id).sort(),
+                    dateRange: { ...dateRange },
+                    dataTypes: [...selectedDataTypes].sort(),
+                    timestamp: Date.now()
+                });
+            }
 
             // Add detailed error tasks (limit to 5 to avoid spam)
             const MAX_ERRORS_SHOWN = 5;
@@ -251,6 +278,30 @@ export function Dashboard() {
                 : [...prev, typeId]
         );
     };
+
+    // Determine Fetch Status
+    const fetchStatus = useMemo(() => {
+        if (!lastFetchedParams) return 'idle';
+
+        // 1. Check if we have data
+        if (rainfallData.length === 0) return 'empty';
+
+        // 2. Check if params have changed
+        const currentIds = selectedStations.map(s => s.id).sort();
+        const prevIds = lastFetchedParams.stationIds;
+        const stationsChanged = JSON.stringify(currentIds) !== JSON.stringify(prevIds);
+
+        const dateChanged = dateRange.start !== lastFetchedParams.dateRange.start ||
+            dateRange.end !== lastFetchedParams.dateRange.end;
+
+        const typesChanged = JSON.stringify([...selectedDataTypes].sort()) !== JSON.stringify(lastFetchedParams.dataTypes);
+
+        if (stationsChanged || dateChanged || typesChanged) {
+            return 'stale';
+        }
+
+        return 'fresh';
+    }, [rainfallData, lastFetchedParams, selectedStations, dateRange, selectedDataTypes]);
 
     const dateConstraints = useMemo(() => {
         if (selectedStations.length === 0) return { min: undefined, max: undefined };
@@ -509,15 +560,42 @@ export function Dashboard() {
                             )}
                         </div>
 
-                        <div className="p-5 bg-card border-t border-border z-10 shrink-0">
+                        <div className="p-5 bg-card border-t border-border z-10 shrink-0 flex items-center gap-3">
                             <button
                                 onClick={handleFetchData}
                                 disabled={selectedStations.length === 0 || loading}
-                                className="w-full py-3 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-all flex justify-center items-center gap-2 shadow-lg shadow-primary/25"
+                                className="flex-1 py-3 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-all flex justify-center items-center gap-2 shadow-lg shadow-primary/25"
                             >
                                 {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Download className="h-4 w-4" />}
                                 Fetch Data
                             </button>
+
+                            {/* Notification Box */}
+                            {fetchStatus !== 'idle' && (
+                                <div className={cn(
+                                    "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border shadow-sm transition-all animate-in fade-in zoom-in duration-300",
+                                    fetchStatus === 'fresh' && "bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800",
+                                    fetchStatus === 'stale' && "bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800",
+                                    fetchStatus === 'empty' && "bg-muted text-muted-foreground border-border"
+                                )}>
+                                    <div className={cn(
+                                        "w-2 h-2 rounded-full shrink-0",
+                                        fetchStatus === 'fresh' && "bg-emerald-500 animate-pulse",
+                                        fetchStatus === 'stale' && "bg-amber-500",
+                                        fetchStatus === 'empty' && "bg-gray-400"
+                                    )} />
+                                    <div className="flex flex-col leading-none">
+                                        <span className="font-bold">
+                                            {fetchStatus === 'fresh' && "Data Ready"}
+                                            {fetchStatus === 'stale' && "Update Needed"}
+                                            {fetchStatus === 'empty' && "No Results"}
+                                        </span>
+                                        {fetchStatus === 'fresh' && <span className="text-[10px] opacity-80 mt-0.5">Graphs updated below &darr;</span>}
+                                        {fetchStatus === 'stale' && <span className="text-[10px] opacity-80 mt-0.5">Parameters changed</span>}
+                                        {fetchStatus === 'empty' && <span className="text-[10px] opacity-80 mt-0.5">Try different dates</span>}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </section>
                 </div>
