@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import type { Station, DataType, DataSource } from '../types';
 import { ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -97,7 +97,7 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                     const details = stationDetails[station.id];
 
                                     return (
-                                        <div key={station.id} style={{ display: 'contents' }}>
+                                        <Fragment key={station.id}>
                                             <tr className={cn("hover:bg-muted/50 transition-colors bg-muted/30 border-l-4 border-l-primary")}>
                                                 <td className="px-4 py-3">
                                                     <button
@@ -162,7 +162,7 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                                     </td>
                                                 </tr>
                                             )}
-                                        </div>
+                                        </Fragment>
                                     );
                                 })}
                                 <tr className="bg-muted/20 border-b border-border">
@@ -178,7 +178,7 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                             const details = stationDetails[station.id];
 
                             return (
-                                <div key={station.id} style={{ display: 'contents' }}>
+                                <Fragment key={station.id}>
                                     <tr className="hover:bg-muted/50 transition-colors">
                                         <td className="px-4 py-3">
                                             <button
@@ -240,7 +240,7 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                             </td>
                                         </tr>
                                     )}
-                                </div>
+                                </Fragment>
                             );
                         })}
                     </tbody>

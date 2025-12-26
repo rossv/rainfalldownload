@@ -129,7 +129,7 @@ export class NoaaService implements DataSource {
         // Fallback Strategy
         const proxies = [
             `https://corsproxy.io/?${encodeURIComponent(fullTargetUrl)}`,
-            `https://api.allorigins.win/raw?url=${encodeURIComponent(fullTargetUrl)}`
+            `https://thingproxy.freeboard.io/fetch/${fullTargetUrl}`
         ];
 
         let lastError;

@@ -332,188 +332,193 @@ export function Dashboard() {
 
                 {/* Right Column: Query Parameters */}
                 <div className="flex flex-col gap-4 h-full overflow-hidden">
-                    <section className="flex-1 bg-card border border-border rounded-xl p-5 shadow-sm space-y-4 overflow-y-auto">
-                        <h2 className="font-semibold text-lg">Query Parameters</h2>
-                        <div className="space-y-4">
-                            {/* Selected Stations (Compact) */}
-                            <div className="border border-border rounded-lg p-3 bg-card/50">
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="text-sm font-medium">Selected Stations ({selectedStations.length})</label>
-                                    <button
-                                        onClick={() => setSelectedStations([])}
-                                        className="text-[10px] text-muted-foreground hover:text-foreground bg-muted/50 px-2 py-0.5 rounded"
-                                    >
-                                        Clear
-                                    </button>
-                                </div>
+                    <section className="flex-1 bg-card border border-border rounded-xl shadow-sm flex flex-col overflow-hidden">
+                        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                            <h2 className="font-semibold text-lg">Query Parameters</h2>
+                            <div className="space-y-4">
+                                {/* Selected Stations (Compact) */}
+                                <div className="border border-border rounded-lg p-3 bg-card/50">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <label className="text-sm font-medium">Selected Stations ({selectedStations.length})</label>
+                                        <button
+                                            onClick={() => setSelectedStations([])}
+                                            className="text-[10px] text-muted-foreground hover:text-foreground bg-muted/50 px-2 py-0.5 rounded"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
 
-                                <ul className="space-y-1 max-h-[150px] overflow-y-auto pr-1">
-                                    {selectedStations.length === 0 ? (
-                                        <li className="text-xs text-muted-foreground italic text-center py-2">No stations selected</li>
-                                    ) : (
-                                        selectedStations.map(s => {
-                                            const hasData = stationsWithData.has(s.id);
-                                            return (
-                                                <li key={s.id} className="flex justify-between items-center text-xs p-1.5 bg-background rounded border border-border group hover:border-primary/50 transition-colors">
-                                                    <div className="overflow-hidden flex-1 min-w-0 mr-2">
-                                                        <div className="font-medium truncate leading-tight" title={s.name}>{s.name}</div>
-                                                        <div className="text-[10px] text-muted-foreground leading-tight">{s.id}</div>
-                                                        <div className="flex flex-wrap gap-1 mt-1">
-                                                            {selectedDataTypes.map(typeId => {
-                                                                const isAvailable = stationAvailability[s.id]?.some(dt => dt.id === typeId);
-                                                                if (!isAvailable) return null;
-                                                                return (
-                                                                    <span
-                                                                        key={typeId}
-                                                                        className="px-1 py-0.5 rounded-[2px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 text-[9px] font-mono border border-emerald-200 dark:border-emerald-800 leading-none"
-                                                                        title={`${typeId} is available`}
-                                                                    >
-                                                                        {typeId}
-                                                                    </span>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                        {hasData && (
-                                                            <div className="flex gap-1">
-                                                                <button
-                                                                    onClick={() => handleDownloadSingleCSV(s)}
-                                                                    className="px-1.5 py-0.5 text-[10px] bg-primary text-primary-foreground border border-primary rounded hover:bg-primary/90 transition-colors font-medium shadow-sm"
-                                                                    title="Download CSV"
-                                                                >
-                                                                    CSV
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleDownloadSingleSWMM(s)}
-                                                                    className="px-1.5 py-0.5 text-[10px] bg-primary text-primary-foreground border border-primary rounded hover:bg-primary/90 transition-colors font-medium shadow-sm"
-                                                                    title="Download .dat"
-                                                                >
-                                                                    DAT
-                                                                </button>
+                                    <ul className="space-y-1 max-h-[150px] overflow-y-auto pr-1">
+                                        {selectedStations.length === 0 ? (
+                                            <li className="text-xs text-muted-foreground italic text-center py-2">No stations selected</li>
+                                        ) : (
+                                            selectedStations.map(s => {
+                                                const hasData = stationsWithData.has(s.id);
+                                                return (
+                                                    <li key={s.id} className="flex justify-between items-center text-xs p-1.5 bg-background rounded border border-border group hover:border-primary/50 transition-colors">
+                                                        <div className="overflow-hidden flex-1 min-w-0 mr-2">
+                                                            <div className="font-medium truncate leading-tight" title={s.name}>{s.name}</div>
+                                                            <div className="text-[10px] text-muted-foreground leading-tight">{s.id}</div>
+                                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                                {selectedDataTypes.map(typeId => {
+                                                                    const isAvailable = stationAvailability[s.id]?.some(dt => dt.id === typeId);
+                                                                    if (!isAvailable) return null;
+                                                                    return (
+                                                                        <span
+                                                                            key={typeId}
+                                                                            className="px-1 py-0.5 rounded-[2px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 text-[9px] font-mono border border-emerald-200 dark:border-emerald-800 leading-none"
+                                                                            title={`${typeId} is available`}
+                                                                        >
+                                                                            {typeId}
+                                                                        </span>
+                                                                    );
+                                                                })}
                                                             </div>
-                                                        )}
-                                                        <button
-                                                            onClick={() => toggleStation(s)}
-                                                            className="text-muted-foreground hover:text-red-500 hover:bg-red-50 p-0.5 rounded transition-all opacity-60 group-hover:opacity-100"
-                                                            title="Remove"
-                                                        >
-                                                            &times;
-                                                        </button>
-                                                    </div>
-                                                </li>
-                                            );
-                                        })
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            {hasData && (
+                                                                <div className="flex gap-1">
+                                                                    <button
+                                                                        onClick={() => handleDownloadSingleCSV(s)}
+                                                                        className="px-1.5 py-0.5 text-[10px] bg-primary text-primary-foreground border border-primary rounded hover:bg-primary/90 transition-colors font-medium shadow-sm"
+                                                                        title="Download CSV"
+                                                                    >
+                                                                        CSV
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleDownloadSingleSWMM(s)}
+                                                                        className="px-1.5 py-0.5 text-[10px] bg-primary text-primary-foreground border border-primary rounded hover:bg-primary/90 transition-colors font-medium shadow-sm"
+                                                                        title="Download .dat"
+                                                                    >
+                                                                        DAT
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                            <button
+                                                                onClick={() => toggleStation(s)}
+                                                                className="text-muted-foreground hover:text-red-500 hover:bg-red-50 p-0.5 rounded transition-all opacity-60 group-hover:opacity-100"
+                                                                title="Remove"
+                                                            >
+                                                                &times;
+                                                            </button>
+                                                        </div>
+                                                    </li>
+                                                );
+                                            })
+                                        )}
+                                    </ul>
+                                </div>
+
+                                <div>
+                                    <label className="text-sm font-medium mb-1 block">Date Range</label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="date"
+                                            value={dateRange.start}
+                                            min={dateConstraints.min}
+                                            max={dateConstraints.max}
+                                            onChange={e => setDateRange(p => ({ ...p, start: e.target.value }))}
+                                            className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                                        />
+                                        <input
+                                            type="date"
+                                            value={dateRange.end}
+                                            min={dateConstraints.min}
+                                            max={dateConstraints.max}
+                                            onChange={e => setDateRange(p => ({ ...p, end: e.target.value }))}
+                                            className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                                        />
+                                    </div>
+                                    {dateConstraints.min && (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Available: {dateConstraints.min} to {dateConstraints.max}
+                                        </p>
                                     )}
-                                </ul>
-                            </div>
-
-                            <div>
-                                <label className="text-sm font-medium mb-1 block">Date Range</label>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="date"
-                                        value={dateRange.start}
-                                        min={dateConstraints.min}
-                                        max={dateConstraints.max}
-                                        onChange={e => setDateRange(p => ({ ...p, start: e.target.value }))}
-                                        className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
-                                    />
-                                    <input
-                                        type="date"
-                                        value={dateRange.end}
-                                        min={dateConstraints.min}
-                                        max={dateConstraints.max}
-                                        onChange={e => setDateRange(p => ({ ...p, end: e.target.value }))}
-                                        className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
-                                    />
                                 </div>
-                                {dateConstraints.min && (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        Available: {dateConstraints.min} to {dateConstraints.max}
-                                    </p>
-                                )}
-                            </div>
 
-                            {/* Data Types Selector */}
-                            <div>
-                                <label className="text-sm font-medium mb-1 block">Data Types</label>
-                                {availableDataTypes.length > 0 ? (
-                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 text-sm">
-                                        {availableDataTypes.map(dt => (
-                                            <label key={dt.id} className="flex items-start gap-2 border p-2 rounded-md cursor-pointer hover:bg-accent min-h-[40px]">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedDataTypes.includes(dt.id)}
-                                                    onChange={() => toggleDataType(dt.id)}
-                                                    className="mt-0.5 rounded border-gray-300 text-primary focus:ring-primary shrink-0"
-                                                />
-                                                <span className="text-xs whitespace-normal leading-tight break-words">
-                                                    {dt.name || dt.id} ({dt.id})
-                                                </span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-sm text-muted-foreground italic border border-dashed p-4 rounded-md text-center">
-                                        Select stations to see available data types
-                                    </div>
-                                )}
-                            </div>
-
-                            <div>
-                                <label className="text-sm font-medium mb-1 block">Units</label>
-                                <div className="flex bg-muted p-1 rounded-lg">
-                                    <button
-                                        onClick={() => setUnits('standard')}
-                                        className={cn(
-                                            "flex-1 py-1.5 text-sm rounded-md transition-all",
-                                            preferences.units === 'standard' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                                        )}
-                                    >
-                                        Standard (in)
-                                    </button>
-                                    <button
-                                        onClick={() => setUnits('metric')}
-                                        className={cn(
-                                            "flex-1 py-1.5 text-sm rounded-md transition-all",
-                                            preferences.units === 'metric' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                                        )}
-                                    >
-                                        Metric (mm)
-                                    </button>
+                                {/* Data Types Selector */}
+                                <div>
+                                    <label className="text-sm font-medium mb-1 block">Data Types</label>
+                                    {availableDataTypes.length > 0 ? (
+                                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 text-sm">
+                                            {availableDataTypes.map(dt => (
+                                                <label key={dt.id} className="flex items-start gap-2 border p-2 rounded-md cursor-pointer hover:bg-accent min-h-[40px]">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedDataTypes.includes(dt.id)}
+                                                        onChange={() => toggleDataType(dt.id)}
+                                                        className="mt-0.5 rounded border-gray-300 text-primary focus:ring-primary shrink-0"
+                                                    />
+                                                    <span className="text-xs whitespace-normal leading-tight break-words">
+                                                        {dt.name || dt.id} ({dt.id})
+                                                    </span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-muted-foreground italic border border-dashed p-4 rounded-md text-center">
+                                            Select stations to see available data types
+                                        </div>
+                                    )}
                                 </div>
+
+                                <div>
+                                    <label className="text-sm font-medium mb-1 block">Units</label>
+                                    <div className="flex bg-muted p-1 rounded-lg">
+                                        <button
+                                            onClick={() => setUnits('standard')}
+                                            className={cn(
+                                                "flex-1 py-1.5 text-sm rounded-md transition-all",
+                                                preferences.units === 'standard' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                                            )}
+                                        >
+                                            Standard (in)
+                                        </button>
+                                        <button
+                                            onClick={() => setUnits('metric')}
+                                            className={cn(
+                                                "flex-1 py-1.5 text-sm rounded-md transition-all",
+                                                preferences.units === 'metric' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                                            )}
+                                        >
+                                            Metric (mm)
+                                        </button>
+                                    </div>
+                                </div>
+
                             </div>
 
+                            {rainfallData.length > 0 && selectedStations.length > 0 && (
+                                <div className="pt-4 mt-6 border-t border-border space-y-3">
+                                    <h3 className="font-semibold text-sm">Export Options</h3>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        <button
+                                            onClick={() => downloadCSV(selectedStations, rainfallData)}
+                                            className="w-full py-2 px-4 border border-border hover:bg-accent rounded-lg text-sm font-medium transition-colors text-center"
+                                        >
+                                            Download Single .csv
+                                        </button>
+                                        <button
+                                            onClick={() => downloadSWMM(selectedStations, rainfallData)}
+                                            className="w-full py-2 px-4 border border-border hover:bg-accent rounded-lg text-sm font-medium transition-colors text-center"
+                                        >
+                                            Download Single .dat
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-5 bg-card border-t border-border z-10 shrink-0">
                             <button
                                 onClick={handleFetchData}
                                 disabled={selectedStations.length === 0 || loading}
-                                className="w-full py-3 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-all flex justify-center items-center gap-2 shadow-lg shadow-primary/25 mt-4"
+                                className="w-full py-3 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-all flex justify-center items-center gap-2 shadow-lg shadow-primary/25"
                             >
                                 {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Download className="h-4 w-4" />}
-                                Fetch Rainfall Data
+                                Fetch Data
                             </button>
                         </div>
-
-                        {rainfallData.length > 0 && selectedStations.length > 0 && (
-                            <div className="pt-4 mt-6 border-t border-border space-y-3">
-                                <h3 className="font-semibold text-sm">Export Options</h3>
-                                <div className="grid grid-cols-1 gap-3">
-                                    <button
-                                        onClick={() => downloadCSV(selectedStations, rainfallData)}
-                                        className="w-full py-2 px-4 border border-border hover:bg-accent rounded-lg text-sm font-medium transition-colors text-center"
-                                    >
-                                        Download Single .csv
-                                    </button>
-                                    <button
-                                        onClick={() => downloadSWMM(selectedStations, rainfallData)}
-                                        className="w-full py-2 px-4 border border-border hover:bg-accent rounded-lg text-sm font-medium transition-colors text-center"
-                                    >
-                                        Download Single .dat
-                                    </button>
-                                </div>
-                            </div>
-                        )}
                     </section>
                 </div>
             </div>

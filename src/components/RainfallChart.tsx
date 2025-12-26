@@ -1,5 +1,5 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { RainfallData, Station } from '../types';
 
 interface ChartProps {
@@ -25,6 +25,7 @@ const COLORS = [
 ];
 
 export function RainfallChart({ data, units, stations, title }: ChartProps) {
+    const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
 
     // Safe ID helper for Recharts dataKeys (avoids issues with colons/dots)
     const safeId = (id: string) => String(id).replace(/[:.]/g, '_');
@@ -58,6 +59,19 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
 
         return { chartData: sorted, stationIds: Array.from(ids), originalIds: idMap };
     }, [data]);
+
+    const handleLegendClick = (e: any) => {
+        const dataKey = e.dataKey;
+        setHiddenSeries(prev => {
+            const next = new Set(prev);
+            if (next.has(dataKey)) {
+                next.delete(dataKey);
+            } else {
+                next.add(dataKey);
+            }
+            return next;
+        });
+    };
 
     if (data.length === 0) {
         return (
@@ -103,10 +117,18 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
                             }}
                         />
                         <Legend
-                            formatter={(value) => {
+                            onClick={handleLegendClick}
+                            wrapperStyle={{ cursor: 'pointer' }}
+                            formatter={(value, entry: any) => {
+                                const { dataKey } = entry;
                                 const originalId = originalIds.get(String(value));
                                 const station = stations.find(s => s.id === originalId);
-                                return station ? station.name : (originalId || value);
+                                const isHidden = hiddenSeries.has(dataKey);
+                                return (
+                                    <span style={{ opacity: isHidden ? 0.3 : 1, transition: 'opacity 0.2s' }}>
+                                        {station ? station.name : (originalId || value)}
+                                    </span>
+                                );
                             }}
                         />
                         {stationIds.map((id, index) => (
@@ -118,6 +140,7 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
                                 radius={[2, 2, 0, 0]}
                                 maxBarSize={50}
                                 isAnimationActive={false}
+                                hide={hiddenSeries.has(id)}
                             />
                         ))}
                     </BarChart>
