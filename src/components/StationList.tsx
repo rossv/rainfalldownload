@@ -2,6 +2,7 @@ import { useState, Fragment } from 'react';
 import type { Station, DataType, DataSource } from '../types';
 import { ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { formatDate } from '../lib/dateUtils';
 
 interface StationListProps {
     stations: Station[];
@@ -118,8 +119,8 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                                 <td className="px-4 py-3 text-muted-foreground">
                                                     {station.mindate && station.maxdate ? (
                                                         <div className="flex flex-col text-xs">
-                                                            <span>{station.mindate}</span>
-                                                            <span>{station.maxdate}</span>
+                                                            <span>{formatDate(station.mindate)}</span>
+                                                            <span>{formatDate(station.maxdate)}</span>
                                                         </div>
                                                     ) : '-'}
                                                 </td>
@@ -149,7 +150,7 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                                                             <div className="font-medium text-foreground">{dt.name || dt.id}</div>
                                                                             <div className="text-muted-foreground font-mono mt-1">{dt.id}</div>
                                                                             <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-                                                                                <span>{dt.mindate} - {dt.maxdate}</span>
+                                                                                <span>{formatDate(dt.mindate)} - {formatDate(dt.maxdate)}</span>
                                                                                 <span>{Math.round(dt.datacoverage * 100)}%</span>
                                                                             </div>
                                                                         </div>
@@ -196,8 +197,8 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                         <td className="px-4 py-3 text-muted-foreground">
                                             {station.mindate && station.maxdate ? (
                                                 <div className="flex flex-col text-xs">
-                                                    <span>{station.mindate}</span>
-                                                    <span>{station.maxdate}</span>
+                                                    <span>{formatDate(station.mindate)}</span>
+                                                    <span>{formatDate(station.maxdate)}</span>
                                                 </div>
                                             ) : '-'}
                                         </td>
@@ -227,7 +228,7 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                                                     <div className="font-medium text-foreground">{dt.name || dt.id}</div>
                                                                     <div className="text-muted-foreground font-mono mt-1">{dt.id}</div>
                                                                     <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-                                                                        <span>{dt.mindate} - {dt.maxdate}</span>
+                                                                        <span>{formatDate(dt.mindate)} - {formatDate(dt.maxdate)}</span>
                                                                         <span>{Math.round(dt.datacoverage * 100)}%</span>
                                                                     </div>
                                                                 </div>

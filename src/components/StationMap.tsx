@@ -1,8 +1,9 @@
-import { MapContainer, TileLayer, Marker, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Station } from '../types';
 import L from 'leaflet';
 import { useEffect, useState } from 'react';
+import { formatDate } from '../lib/dateUtils';
 
 // Fix Leaflet default icon issue in React
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -144,9 +145,7 @@ export function StationMap({ stations, selectedStations, onToggleStation, center
                                 mouseout: () => setHoveredStation(null)
                             }}
                         >
-                            <Tooltip direction="top" offset={[0, -20]} opacity={0.9}>
-                                <span className="font-semibold">{st.name}</span>
-                            </Tooltip>
+
                         </Marker>
                     )
                 })}
@@ -161,11 +160,11 @@ export function StationMap({ stations, selectedStations, onToggleStation, center
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-2">
                             <div>
                                 <span className="text-muted-foreground">Coverage:</span>
-                                <span className="ml-1 font-medium">{(activeDisplayStation.datacoverage || 0) * 100}%</span>
+                                <span className="ml-1 font-medium">{(activeDisplayStation.datacoverage ? activeDisplayStation.datacoverage * 100 : 0).toFixed(2)}%</span>
                             </div>
                             <div>
                                 <span className="text-muted-foreground mr-1">Dates:</span>
-                                <span className="font-medium">{activeDisplayStation.mindate?.split('-')[0]} - {activeDisplayStation.maxdate?.split('-')[0]}</span>
+                                <span className="font-medium">{formatDate(activeDisplayStation.mindate)} - {formatDate(activeDisplayStation.maxdate)}</span>
                             </div>
                         </div>
                         <div className="pt-2 text-[10px] text-muted-foreground italic">

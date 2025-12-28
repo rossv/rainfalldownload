@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { differenceInDays, parseISO, min, max } from 'date-fns';
+import { formatDate } from '../lib/dateUtils';
 import type { Station, DataType } from '../types';
 
 interface AvailabilityTimelineProps {
@@ -151,7 +152,7 @@ export function AvailabilityTimeline({ stations, availability, loading, selected
                 <span>Data Availability Timeline</span>
                 {selectedStart && selectedEnd && (
                     <span className="text-xs font-normal text-primary bg-primary/10 px-2 py-1 rounded">
-                        Selected: {selectedStart} to {selectedEnd}
+                        Selected: {formatDate(selectedStart)} to {formatDate(selectedEnd)}
                     </span>
                 )}
             </h2>
@@ -260,7 +261,7 @@ export function AvailabilityTimeline({ stations, availability, loading, selected
                                                         <div
                                                             className="absolute h-full rounded bg-blue-500/60 hover:bg-blue-600 transition-colors cursor-help border border-blue-600/20"
                                                             style={getPositionStyle(dt.mindate, dt.maxdate)}
-                                                            title={`${dt.name} \n${dt.mindate} to ${dt.maxdate} \nCoverage: ${(dt.datacoverage * 100).toFixed(1)}% `}
+                                                            title={`${dt.name} \n${formatDate(dt.mindate)} to ${formatDate(dt.maxdate)} \nCoverage: ${(dt.datacoverage * 100).toFixed(1)}% `}
                                                         />
                                                     </div>
                                                 </div>

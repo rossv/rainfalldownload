@@ -411,19 +411,23 @@ export function Dashboard() {
                                                             <div className="font-medium truncate leading-tight" title={s.name}>{s.name}</div>
                                                             <div className="text-[10px] text-muted-foreground leading-tight">{s.id}</div>
                                                             <div className="flex flex-wrap gap-1 mt-1">
-                                                                {selectedDataTypes.map(typeId => {
-                                                                    const isAvailable = stationAvailability[s.id]?.some(dt => dt.id === typeId);
-                                                                    if (!isAvailable) return null;
-                                                                    return (
-                                                                        <span
-                                                                            key={typeId}
-                                                                            className="px-1 py-0.5 rounded-[2px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 text-[9px] font-mono border border-emerald-200 dark:border-emerald-800 leading-none"
-                                                                            title={`${typeId} is available`}
-                                                                        >
-                                                                            {typeId}
-                                                                        </span>
-                                                                    );
-                                                                })}
+                                                                {availabilityLoading[s.id] ? (
+                                                                    <Loader2 className="animate-spin h-3 w-3 text-muted-foreground" />
+                                                                ) : (
+                                                                    selectedDataTypes.map(typeId => {
+                                                                        const isAvailable = stationAvailability[s.id]?.some(dt => dt.id === typeId);
+                                                                        if (!isAvailable) return null;
+                                                                        return (
+                                                                            <span
+                                                                                key={typeId}
+                                                                                className="px-1 py-0.5 rounded-[2px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 text-[9px] font-mono border border-emerald-200 dark:border-emerald-800 leading-none"
+                                                                                title={`${typeId} is available`}
+                                                                            >
+                                                                                {typeId}
+                                                                            </span>
+                                                                        );
+                                                                    })
+                                                                )}
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-1">

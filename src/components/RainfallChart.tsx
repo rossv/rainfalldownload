@@ -1,5 +1,6 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { useMemo, useState } from 'react';
+import { formatDate } from '../lib/dateUtils';
 import type { RainfallData, Station } from '../types';
 
 interface ChartProps {
@@ -256,7 +257,7 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
                                 tick={{ fontSize: 12 }}
                                 tickFormatter={(val) => {
                                     const d = new Date(val);
-                                    return d.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) +
+                                    return formatDate(d) +
                                         (d.getHours() !== 0 ? ` ${d.getHours()}h` : '');
                                 }}
                                 minTickGap={30}
@@ -271,7 +272,10 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
                                 contentStyle={{ backgroundColor: 'hsl(var(--popover))', borderColor: 'hsl(var(--border))', borderRadius: 'var(--radius)' }}
                                 itemStyle={{ color: 'hsl(var(--foreground))' }}
                                 labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
-                                labelFormatter={(label) => new Date(label).toLocaleString()}
+                                labelFormatter={(label) => {
+                                    const d = new Date(label);
+                                    return `${formatDate(d)} ${d.toLocaleTimeString()}`;
+                                }}
                                 filterNull={true}
                                 formatter={(value: any, name: any) => {
                                     // Don't show tooltip for hidden series
