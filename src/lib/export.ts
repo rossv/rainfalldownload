@@ -8,38 +8,53 @@ function formatDate(isoString: string): string {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-export function downloadCSV(stations: Station[], data: RainfallData[]) {
+export function downloadCSV(stations: Station[], data: RainfallData[], datatypes?: string[]) {
+    const activeDataTypes = datatypes?.length
+        ? datatypes
+        : Array.from(new Set(data.map(d => d.datatype || 'PRCP')));
+
+    const filteredData = datatypes?.length
+        ? data.filter(d => activeDataTypes.includes(d.datatype || 'PRCP'))
+        : data;
+
+    if (filteredData.length === 0) return;
+
     if (stations.length > 1) {
         // Wide format: Date, Station1, Station2, ...
         // Sort dates
-        const allDates = Array.from(new Set(data.map(d => d.date))).sort();
+        const allDates = Array.from(new Set(filteredData.map(d => d.date))).sort();
 
-        // Map data: Date -> StationID -> Value
+        // Map data: Date -> (StationID|Datatype) -> Value
         const valueMap = new Map<string, Map<string, number>>();
-        data.forEach(d => {
+        filteredData.forEach(d => {
             if (!valueMap.has(d.date)) {
                 valueMap.set(d.date, new Map());
             }
             if (d.stationId) {
-                valueMap.get(d.date)!.set(d.stationId, d.value);
+                const dtype = d.datatype || 'PRCP';
+                const mapKey = `${d.stationId}|${dtype}`;
+                valueMap.get(d.date)!.set(mapKey, d.value);
             }
         });
 
-        // Create headers
-        const stationHeaders = stations.map(s => {
+        // Create headers for each station/datatype combination
+        const stationHeaders = stations.flatMap(s => {
             const parts = s.id.split(':');
-            return parts.length > 1 ? parts[1] : s.id;
+            const simpleId = parts.length > 1 ? parts[1] : s.id;
+            return activeDataTypes.map(dtype => ({
+                key: `${s.id}|${dtype}`,
+                label: `${simpleId} (${dtype})`
+            }));
         });
         // Using comma for standard CSV column separation
-        const headers = ['Date', ...stationHeaders].join(',');
+        const headers = ['Date', ...stationHeaders.map(h => h.label)].join(',');
 
         const rows = allDates.map(date => {
             // Clean date format
             const rowValues = [formatDate(date)];
             const dateValues = valueMap.get(date);
-            stations.forEach(s => {
-                const val = dateValues?.get(s.id);
-                // Handle 0 vs undefined/null carefully if needed, but here undefined means no data
+            stationHeaders.forEach(h => {
+                const val = dateValues?.get(h.key);
                 rowValues.push(val !== undefined ? val.toString() : '');
             });
             return rowValues.join(',');
@@ -56,7 +71,7 @@ export function downloadCSV(stations: Station[], data: RainfallData[]) {
         // Format: StationID, Date, Value, DataType
         // Using comma to be consistent with "CSV"
         const headers = ['StationID', 'StationName', 'Datetime', 'Value', 'DataType'].join(',');
-        const rows = data.map(d => {
+        const rows = filteredData.map(d => {
             const parts = d.stationId?.split(':') || ['', d.stationId || ''];
             const simpleId = parts.length > 1 ? parts[1] : d.stationId;
             const station = stations.find(s => s.id === d.stationId);
@@ -82,13 +97,24 @@ export function downloadCSV(stations: Station[], data: RainfallData[]) {
     }
 }
 
-export function downloadSWMM(stations: Station[], data: RainfallData[]) {
+export function downloadSWMM(stations: Station[], data: RainfallData[], datatypes?: string[]) {
+    const filteredData = datatypes?.length
+        ? data.filter(d => datatypes.includes(d.datatype || 'PRCP'))
+        : data;
+
+    if (filteredData.length === 0) return;
+
     // Vertical stacking for all stations (User request: separate blocks for each station)
     // Format: StationID  Year  Month  Day  Hour  Minute  Value
     // Zero padded dates/times
 
     // Sort data: Station -> Date
-    const sortedData = [...data].sort((a, b) => {
+    const sortedData = [...filteredData].sort((a, b) => {
+        const dtypeA = a.datatype || 'PRCP';
+        const dtypeB = b.datatype || 'PRCP';
+        const typeComp = dtypeA.localeCompare(dtypeB);
+        if (typeComp !== 0) return typeComp;
+
         const sComp = (a.stationId || '').localeCompare(b.stationId || '');
         if (sComp !== 0) return sComp;
         return new Date(a.date).getTime() - new Date(b.date).getTime();
@@ -102,6 +128,7 @@ export function downloadSWMM(stations: Station[], data: RainfallData[]) {
 
     // Format: StationID Tab Year Month Day Hour Minute Tab Value
     const formattedRows = sortedData.map(d => {
+        const dtype = d.datatype || 'PRCP';
         const date = new Date(d.date);
         const year = date.getFullYear();
         const month = (date.getMonth() + 1).toString().padStart(2, '0');
@@ -111,7 +138,7 @@ export function downloadSWMM(stations: Station[], data: RainfallData[]) {
 
         const id = d.stationId?.replace('GHCND:', '') || 'UNKNOWN';
 
-        return `${id}\t${year} ${month} ${day} ${hour} ${minute}\t${d.value}`;
+        return `${dtype}\t${id}\t${year} ${month} ${day} ${hour} ${minute}\t${d.value}`;
     });
 
 

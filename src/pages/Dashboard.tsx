@@ -150,12 +150,12 @@ export function Dashboard() {
 
     const handleDownloadSingleCSV = (station: Station) => {
         const stationData = rainfallData.filter(d => d.stationId === station.id);
-        if (stationData.length > 0) downloadCSV([station], stationData);
+        if (stationData.length > 0) downloadCSV([station], stationData, selectedDataTypes);
     };
 
     const handleDownloadSingleSWMM = (station: Station) => {
         const stationData = rainfallData.filter(d => d.stationId === station.id);
-        if (stationData.length > 0) downloadSWMM([station], stationData);
+        if (stationData.length > 0) downloadSWMM([station], stationData, selectedDataTypes);
     };
 
     const handleFetchData = async () => {
@@ -563,13 +563,13 @@ export function Dashboard() {
                                 hasData ? "w-auto opacity-100" : "w-0 flex-none opacity-0"
                             )}>
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); downloadCSV(selectedStations, rainfallData); }}
+                                    onClick={(e) => { e.stopPropagation(); downloadCSV(selectedStations, rainfallData, selectedDataTypes); }}
                                     className="flex-1 px-4 py-3 border border-border bg-background hover:bg-accent text-accent-foreground font-medium rounded-lg transition-colors flex justify-center items-center gap-2 whitespace-nowrap"
                                 >
                                     <Download className="h-4 w-4" /> Download Single .csv
                                 </button>
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); downloadSWMM(selectedStations, rainfallData); }}
+                                    onClick={(e) => { e.stopPropagation(); downloadSWMM(selectedStations, rainfallData, selectedDataTypes); }}
                                     className="flex-1 px-4 py-3 border border-border bg-background hover:bg-accent text-accent-foreground font-medium rounded-lg transition-colors flex justify-center items-center gap-2 whitespace-nowrap"
                                 >
                                     <Download className="h-4 w-4" /> Download Single .dat
