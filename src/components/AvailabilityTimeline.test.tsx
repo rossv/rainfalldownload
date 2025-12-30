@@ -28,14 +28,17 @@ describe('AvailabilityTimeline', () => {
                 stations={[station]}
                 availability={{ [station.id]: [dataType] }}
                 loading={{}}
+                onRemoveStation={() => {}}
             />
         );
 
-        const toggle = screen.getByRole('button');
+        const toggle = screen.getAllByRole('button')[0];
         await user.click(toggle);
 
         const bars = await screen.findAllByTitle(/Precipitation/);
-        const detailBar = bars.find(element => element.getAttribute('title')?.includes('Coverage'));
+        const detailBar = bars.find(
+            element => element.getAttribute('title')?.includes('Coverage') && element.tagName === 'DIV'
+        );
 
         expect(detailBar).toBeDefined();
 
