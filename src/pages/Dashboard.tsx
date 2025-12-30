@@ -565,14 +565,18 @@ export function Dashboard() {
                                 <button
                                     onClick={(e) => { e.stopPropagation(); downloadCSV(selectedStations, rainfallData); }}
                                     className="flex-1 px-4 py-3 border border-border bg-background hover:bg-accent text-accent-foreground font-medium rounded-lg transition-colors flex justify-center items-center gap-2 whitespace-nowrap"
+                                    aria-label="Download CSV for selected stations"
+                                    title="Download CSV for selected stations"
                                 >
-                                    <Download className="h-4 w-4" /> Download Single .csv
+                                    <Download className="h-4 w-4" /> Download CSV for selected stations
                                 </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); downloadSWMM(selectedStations, rainfallData); }}
                                     className="flex-1 px-4 py-3 border border-border bg-background hover:bg-accent text-accent-foreground font-medium rounded-lg transition-colors flex justify-center items-center gap-2 whitespace-nowrap"
+                                    aria-label="Download SWMM .dat for selected stations"
+                                    title="Download SWMM .dat for selected stations"
                                 >
-                                    <Download className="h-4 w-4" /> Download Single .dat
+                                    <Download className="h-4 w-4" /> Download SWMM .dat for selected stations
                                 </button>
                             </div>
 
