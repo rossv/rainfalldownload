@@ -189,18 +189,24 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                                             </div>
                                                         ) : details && details.length > 0 ? (
                                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                                                {details.map(dt => (
-                                                                    <div key={dt.id} className="bg-background border rounded p-2 text-xs shadow-sm">
-                                                                        <div className="font-medium text-foreground">{dt.name || dt.id}</div>
-                                                                        <div className="text-muted-foreground font-mono mt-1">{dt.id}</div>
-                                                                        <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-                                                                            <span>{formatDate(dt.mindate)} - {formatDate(dt.maxdate)}</span>
-                                                                            <span>{Math.round(dt.datacoverage * 100)}%</span>
-                                                                        </div>
+                                                        {details.map(dt => {
+                                                            const coveragePercent = dt.datacoverage != null
+                                                                ? Math.round(dt.datacoverage * 100)
+                                                                : null;
+
+                                                            return (
+                                                                <div key={dt.id} className="bg-background border rounded p-2 text-xs shadow-sm">
+                                                                    <div className="font-medium text-foreground">{dt.name || dt.id}</div>
+                                                                    <div className="text-muted-foreground font-mono mt-1">{dt.id}</div>
+                                                                    <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
+                                                                        <span>{formatDate(dt.mindate)} - {formatDate(dt.maxdate)}</span>
+                                                                        <span>{coveragePercent !== null ? `${coveragePercent}%` : 'N/A'}</span>
                                                                     </div>
-                                                                ))}
-                                                            </div>
-                                                        ) : (
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : (
                                                             <div className="text-sm text-muted-foreground italic">No detailed parameter info available.</div>
                                                         )}
                                                     </div>
