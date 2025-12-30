@@ -1,3 +1,4 @@
+import { saveAs } from 'file-saver';
 import type { RainfallData, Station } from '../types';
 
 // Helper to format date nicely: YYYY-MM-DD HH:mm:ss
@@ -45,9 +46,11 @@ export function downloadCSV(stations: Station[], data: RainfallData[]) {
         });
 
         const content = [headers, ...rows].join('\n');
-        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        triggerDownload(url, `rainfall_export_wide_${new Date().toISOString().split('T')[0]}.csv`);
+        // Add BOM for Excel compatibility
+        const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8' });
+
+        const filename = `Rainfall_Data_Multiple_Stations_${new Date().toISOString().split('T')[0]}.csv`;
+        saveAs(blob, filename);
     } else {
         // Single station / List format
         // Format: StationID, Date, Value, DataType
@@ -61,9 +64,21 @@ export function downloadCSV(stations: Station[], data: RainfallData[]) {
         });
 
         const content = [headers, ...rows].join('\n');
-        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        triggerDownload(url, `rainfall_export_${new Date().toISOString().split('T')[0]}.csv`);
+        // Add BOM for Excel compatibility
+        const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8' });
+
+        // Single station filename generation
+        let filename = `rainfall_export_${new Date().toISOString().split('T')[0]}.csv`;
+        if (stations.length === 1) {
+            const s = stations[0];
+            // Ensure name is a string and trim it. Remove any weird control chars.
+            const rawName = String(s.name || 'Station').trim();
+            const safeName = rawName.replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
+
+            filename = `${safeName}_${new Date().toISOString().split('T')[0]}.csv`;
+        }
+
+        saveAs(blob, filename);
     }
 }
 
@@ -82,13 +97,10 @@ export function downloadSWMM(stations: Station[], data: RainfallData[]) {
 
 
     // User requested format example: RG1        1998 06 13 02 00             0.01
-    // The example uses spaces between date parts. Let's stick strictly to that:
-    // StationID \t YYYY MM DD HH mm \t Value
-
-    // Actually, looking at the user request: "RG1        1998 06 13 02 00             0.01"
     // It looks like fixed width or tab separated. Standard SWMM usually handles whitespace.
     // Let's use tabs to be safe and clean, but space out the date parts as requested "1998 06 13 02 00".
 
+    // Format: StationID Tab Year Month Day Hour Minute Tab Value
     const formattedRows = sortedData.map(d => {
         const date = new Date(d.date);
         const year = date.getFullYear();
@@ -104,8 +116,7 @@ export function downloadSWMM(stations: Station[], data: RainfallData[]) {
 
 
     const content = formattedRows.join('\n');
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
 
     // Generate meaningful filename
     let filename = `swmm_rainfall.dat`;
@@ -113,28 +124,11 @@ export function downloadSWMM(stations: Station[], data: RainfallData[]) {
         const name = stations[0].name || 'STATION';
         // Clean filename
         const safeName = name.replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
-        const safeId = stations[0].id.replace('GHCND:', '');
-        filename = `${safeId}_${safeName}_SWMM.dat`;
+
+        filename = `${safeName}_SWMM.dat`;
     } else if (stations.length > 1) {
         filename = `Multiple_Stations_SWMM_${new Date().toISOString().split('T')[0]}.dat`;
     }
 
-    triggerDownload(url, filename);
-}
-
-function triggerDownload(url: string, filename: string) {
-    const link = document.createElement('a');
-    link.href = url;
-    // Use both property and attribute for maximum compatibility
-    link.download = filename;
-    link.setAttribute('download', filename);
-
-    document.body.appendChild(link);
-    link.click();
-
-    // Cleanup: Extend timeout to ensure browser has time to capture the blob
-    setTimeout(() => {
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-    }, 5000);
+    saveAs(blob, filename);
 }

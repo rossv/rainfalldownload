@@ -15,7 +15,7 @@ export function StationSearch({ dataSource, capabilities, onStationsFound }: Sea
     const { preferences } = usePreferences();
     const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(false);
-    const [searched, setSearched] = useState(false);
+
 
     const activeCredentials = preferences.credentials[preferences.providerId];
     const hasApiKey = Boolean(activeCredentials?.token?.trim() || activeCredentials?.apiKey?.trim());
@@ -41,7 +41,7 @@ export function StationSearch({ dataSource, capabilities, onStationsFound }: Sea
         }
 
         setLoading(true);
-        setSearched(false);
+
         try {
             const stations = await dataSource.findStationsByCity(query);
 
@@ -55,7 +55,7 @@ export function StationSearch({ dataSource, capabilities, onStationsFound }: Sea
             }
 
             onStationsFound(stations, center);
-            setSearched(true);
+
         } catch (error) {
             console.error('Search failed:', error);
             if (axios.isAxiosError(error)) {
@@ -108,7 +108,7 @@ export function StationSearch({ dataSource, capabilities, onStationsFound }: Sea
         }
 
         setLoading(true);
-        setSearched(false);
+
 
         navigator.geolocation.getCurrentPosition(
             async (position) => {
@@ -116,7 +116,7 @@ export function StationSearch({ dataSource, capabilities, onStationsFound }: Sea
                     const { latitude, longitude } = position.coords;
                     const stations = await dataSource.findStationsByCoords(latitude, longitude);
                     onStationsFound(stations, [latitude, longitude]);
-                    setSearched(true);
+
                     setQuery(`Current Location (${latitude.toFixed(2)}, ${longitude.toFixed(2)})`);
                 } catch (error) {
                     console.error(error);
@@ -138,28 +138,28 @@ export function StationSearch({ dataSource, capabilities, onStationsFound }: Sea
     };
 
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
             <form onSubmit={handleSearch} className="flex flex-wrap gap-2">
                 <input
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Enter a city (e.g., Asheville, NC)"
-                    className="flex-1 min-w-0 px-4 py-2 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all"
+                    placeholder="Find Stations"
+                    className="flex-1 min-w-0 px-4 py-1 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all"
                 />
                 <button
                     type="button"
                     onClick={handleLocation}
                     disabled={loading || !searchEnabled || (!hasApiKey && capabilities?.requiresApiKey)}
                     title="Use my location"
-                    className="px-3 py-2 bg-secondary text-secondary-foreground border border-input rounded-md hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center"
+                    className="px-3 py-1 bg-secondary text-secondary-foreground border border-input rounded-md hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center"
                 >
                     <MapPin className="h-4 w-4" />
                 </button>
                 <button
                     type="submit"
                     disabled={loading || !searchEnabled || (!hasApiKey && capabilities?.requiresApiKey)}
-                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-2 whitespace-nowrap"
+                    className="px-4 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-2 whitespace-nowrap"
                 >
                     {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Search className="h-4 w-4" />}
                     Search
@@ -170,11 +170,7 @@ export function StationSearch({ dataSource, capabilities, onStationsFound }: Sea
                     Add your API Token in Settings (top right) to search for stations with this provider.
                 </p>
             )}
-            {searched && (
-                <p className="text-sm text-muted-foreground animate-in fade-in slide-in-from-top-1">
-                    Search complete. Check the map for results.
-                </p>
-            )}
+
         </div>
     );
 }

@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, X, Loader2 } from 'lucide-react';
 import { differenceInDays, parseISO, min, max } from 'date-fns';
 import { formatDate } from '../lib/dateUtils';
 import type { Station, DataType } from '../types';
+import { cn } from '../lib/utils';
 
 interface AvailabilityTimelineProps {
     stations: Station[];
@@ -11,9 +12,28 @@ interface AvailabilityTimelineProps {
     selectedStart?: string;
     selectedEnd?: string;
     onRangeChange?: (start: string, end: string) => void;
+    onRemoveStation: (station: Station) => void;
+    onDownloadCSV?: (station: Station) => void;
+    onDownloadSWMM?: (station: Station) => void;
+    stationsWithData?: Set<string>;
+    selectedDataTypes?: string[];
+    onToggleDataType?: (typeId: string) => void;
 }
 
-export function AvailabilityTimeline({ stations, availability, loading, selectedStart, selectedEnd, onRangeChange }: AvailabilityTimelineProps) {
+export function AvailabilityTimeline({
+    stations,
+    availability,
+    loading,
+    selectedStart,
+    selectedEnd,
+    onRangeChange,
+    onRemoveStation,
+    onDownloadCSV,
+    onDownloadSWMM,
+    stationsWithData = new Set(),
+    selectedDataTypes = [],
+    onToggleDataType
+}: AvailabilityTimelineProps) {
     const [expandedStations, setExpandedStations] = useState<Set<string>>(new Set());
 
     // Drag state
@@ -200,6 +220,7 @@ export function AvailabilityTimeline({ stations, availability, loading, selected
                             const dataTypes = availability[station.id] || [];
                             const isLoading = loading[station.id];
                             const isExpanded = expandedStations.has(station.id);
+                            const hasDownloadedData = stationsWithData.has(station.id);
 
                             let stationMin = minDate; // placeholder
                             let stationMax = minDate; // placeholder
@@ -213,22 +234,119 @@ export function AvailabilityTimeline({ stations, availability, loading, selected
                             }
 
                             return (
-                                <div key={station.id} className="relative group">
+                                <div key={station.id} className="relative group bg-background/50 hover:bg-background/80 rounded-lg p-1 transition-colors border border-transparent hover:border-border/50">
                                     {/* Station Header Row */}
                                     <div
-                                        className="flex items-center gap-2 mb-1 pointer-events-auto cursor-default"
+                                        className="flex items-center gap-2 mb-2 pointer-events-auto cursor-default"
                                         onMouseDown={(e) => e.stopPropagation()}
                                     >
                                         <button
                                             onClick={(e) => { e.stopPropagation(); toggleExpand(station.id); }}
-                                            className="p-1 hover:bg-muted rounded transition-colors cursor-pointer"
+                                            className="p-1 hover:bg-muted rounded transition-colors cursor-pointer text-muted-foreground"
                                         >
                                             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                         </button>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm truncate" title={station.name}>
-                                                {station.name}
-                                                {isLoading && <span className="ml-2 text-xs text-muted-foreground animate-pulse">Checking availability...</span>}
+                                        <div className="flex-1 min-w-0 pr-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className="font-medium text-sm truncate" title={station.name}>
+                                                    {station.name}
+                                                </div>
+                                                <div className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono">
+                                                    {station.id}
+                                                </div>
+                                                {/* Download Buttons Moved Here */}
+                                                {hasDownloadedData && (
+                                                    <div className="flex items-center gap-1 ml-2">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onDownloadCSV?.(station); }}
+                                                            className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded shadow-sm transition-colors text-[10px] font-bold"
+                                                            title="Download CSV"
+                                                        >
+                                                            CSV
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onDownloadSWMM?.(station); }}
+                                                            className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded shadow-sm transition-colors text-[10px] font-bold"
+                                                            title="Download DAT"
+                                                        >
+                                                            DAT
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Chips & Download Controls */}
+                                            <div className="flex items-center justify-between mt-1">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {isLoading ? (
+                                                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                            <Loader2 className="h-3 w-3 animate-spin" /> Checking params...
+                                                        </span>
+                                                    ) : (
+                                                        dataTypes.map(dt => {
+                                                            const isSelected = selectedDataTypes.includes(dt.id);
+
+                                                            // Determine coverage status
+                                                            let isFullCoverage = true;
+                                                            if (selectedStart && selectedEnd) {
+                                                                const sStart = parseISO(dt.mindate);
+                                                                const sEnd = parseISO(dt.maxdate);
+                                                                const uStart = parseISO(selectedStart);
+                                                                const uEnd = parseISO(selectedEnd);
+
+                                                                // Station must start on or before user selection AND end on or after user selection
+                                                                // We use string comparison for YYYY-MM-DD to be safe/simple, or just date comparison
+                                                                // Date comparison:
+                                                                isFullCoverage = sStart <= uStart && sEnd >= uEnd;
+                                                            }
+
+                                                            const baseClasses = "px-1.5 py-1 rounded-sm text-[10px] font-mono leading-none transition-all cursor-pointer relative z-50 pointer-events-auto hover:scale-110 hover:ring-1 hover:ring-black/20 dark:hover:ring-white/20";
+
+                                                            let colorClasses = "";
+                                                            if (isFullCoverage) {
+                                                                colorClasses = isSelected
+                                                                    ? "bg-emerald-100 text-emerald-900 border-2 border-emerald-600 font-bold shadow-sm ring-1 ring-emerald-500/30"
+                                                                    : "bg-emerald-50 text-emerald-700/70 border border-emerald-200 hover:border-emerald-400 hover:bg-emerald-100";
+                                                            } else {
+                                                                colorClasses = isSelected
+                                                                    ? "bg-amber-100 text-amber-900 border-2 border-amber-600 font-bold shadow-sm ring-1 ring-amber-500/30"
+                                                                    : "bg-amber-50 text-amber-700/70 border border-amber-200 hover:border-amber-400 hover:bg-amber-100";
+                                                            }
+
+                                                            return (
+                                                                <button
+                                                                    key={dt.id}
+                                                                    type="button"
+                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        onToggleDataType?.(dt.id);
+                                                                    }}
+                                                                    className={cn(baseClasses, colorClasses)}
+                                                                    title={`${dt.name} (${dt.id})\nCoverage: ${(dt.datacoverage * 100).toFixed(1)}%\nRange: ${formatDate(dt.mindate)} to ${formatDate(dt.maxdate)}${!isFullCoverage ? '\n⚠️ Partial Coverage for selected range' : ''}`}
+                                                                >
+                                                                    {dt.id}
+                                                                </button>
+                                                            );
+                                                        })
+                                                    )}
+                                                    {!isLoading && dataTypes.length === 0 && (
+                                                        <span className="text-[10px] text-muted-foreground italic">No params found</span>
+                                                    )}
+                                                </div>
+
+                                                {/* Action Buttons */}
+                                                <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); onRemoveStation(station); }}
+                                                        className="p-1 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400 rounded text-muted-foreground transition-colors"
+                                                        title="Remove Station"
+                                                    >
+                                                        <X className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -245,9 +363,9 @@ export function AvailabilityTimeline({ stations, availability, loading, selected
 
                                     {/* Details (Accordion) */}
                                     {isExpanded && (
-                                        <div className="space-y-1 animate-in slide-in-from-top-2 fade-in duration-200 pointer-events-auto mt-1">
+                                        <div className="space-y-1 animate-in slide-in-from-top-2 fade-in duration-200 pointer-events-auto mt-1 mb-3">
                                             {hasData ? dataTypes.map(dt => (
-                                                <div key={dt.id} className="relative h-5 w-full bg-muted/20 rounded flex items-center">
+                                                <div key={dt.id} className="relative h-5 w-full bg-muted/20 rounded flex items-center group/track">
                                                     {/* Label Overlay */}
                                                     <div
                                                         className="absolute left-1 z-20 text-[10px] font-bold text-foreground/70 bg-background/50 backdrop-blur-[1px] px-1 rounded pointer-events-none select-none border border-border/20 shadow-sm"

@@ -15,8 +15,36 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
     const [expandedStationId, setExpandedStationId] = useState<string | null>(null);
     const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
     const [stationDetails, setStationDetails] = useState<Record<string, DataType[]>>({});
+    const [sortConfig, setSortConfig] = useState<{ key: keyof Station | 'mindate' | 'maxdate'; direction: 'asc' | 'desc' } | null>({ key: 'datacoverage', direction: 'desc' });
 
-    const sortedStations = [...stations].sort((a, b) => (b.datacoverage ?? 0) - (a.datacoverage ?? 0));
+    const handleSort = (key: keyof Station | 'mindate' | 'maxdate') => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const sortedStations = [...stations].sort((a, b) => {
+        if (!sortConfig) return 0;
+
+        let aValue: any = a[sortConfig.key as keyof Station];
+        let bValue: any = b[sortConfig.key as keyof Station];
+
+        // Handle specific date keys if they aren't direct properties (though they seem to be in Station type based on usage)
+        // usage: station.mindate, station.maxdate. assuming they are properties.
+
+        if (aValue === undefined || aValue === null) aValue = '';
+        if (bValue === undefined || bValue === null) bValue = '';
+
+        if (aValue < bValue) {
+            return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+            return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+    });
 
     const isSelected = (id: string) => selectedStations.some(s => s.id === id);
 
@@ -70,6 +98,23 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
         );
     }
 
+    const SortIcon = ({ column }: { column: keyof Station | 'mindate' | 'maxdate' }) => {
+        if (sortConfig?.key !== column) return <div className="w-4 h-4" />;
+        return sortConfig.direction === 'asc' ? <ChevronDown className="h-3 w-3 rotate-180" /> : <ChevronDown className="h-3 w-3" />;
+    };
+
+    const renderHeader = (label: string, column: keyof Station | 'mindate' | 'maxdate', width?: string) => (
+        <th
+            className={`px-4 py-3 font-medium cursor-pointer hover:bg-muted-foreground/10 transition-colors select-none group ${width || ''}`}
+            onClick={() => handleSort(column)}
+        >
+            <div className="flex items-center gap-1">
+                {label}
+                <SortIcon column={column} />
+            </div>
+        </th>
+    );
+
     return (
         <div className="h-full flex flex-col border border-border rounded-xl bg-card overflow-hidden shadow-sm">
             <div className="overflow-auto flex-1">
@@ -77,18 +122,20 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                     <thead className="text-xs text-muted-foreground bg-muted sticky top-0 z-10">
                         <tr>
                             <th className="px-4 py-3 font-medium w-10"></th>
-                            <th className="px-4 py-3 font-medium">Station Name</th>
-                            <th className="px-4 py-3 font-medium w-32">ID</th>
-                            <th className="px-4 py-3 font-medium w-24">Coverage</th>
-                            <th className="px-4 py-3 font-medium w-48">Date Range</th>
+                            {renderHeader("Station Name", "name")}
+                            {renderHeader("ID", "id", "w-32")}
+                            {renderHeader("Coverage", "datacoverage", "w-24")}
+                            {renderHeader("Start Date", "mindate", "w-32")}
+                            {renderHeader("End Date", "maxdate", "w-32")}
                             <th className="px-4 py-3 font-medium w-10"></th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
+                        {/* Selected Stations Section - always at top if any */}
                         {sortedStations.filter(s => isSelected(s.id)).length > 0 && (
                             <>
                                 <tr className="bg-muted/50 border-b-2 border-primary/20">
-                                    <td colSpan={6} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-primary">
+                                    <td colSpan={7} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-primary">
                                         Selected Stations
                                     </td>
                                 </tr>
@@ -97,82 +144,81 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                     const loading = loadingDetails === station.id;
                                     const details = stationDetails[station.id];
 
-                                    return (
-                                        <Fragment key={station.id}>
-                                            <tr className={cn("hover:bg-muted/50 transition-colors bg-muted/30 border-l-4 border-l-primary")}>
-                                                <td className="px-4 py-3">
-                                                    <button
-                                                        onClick={() => onToggleStation(station)}
-                                                        className={cn(
-                                                            "w-5 h-5 rounded border flex items-center justify-center transition-colors bg-primary border-primary text-primary-foreground"
+                                    return (<Fragment key={station.id}>
+                                        <tr className={cn("hover:bg-muted/50 transition-colors bg-muted/30 border-l-4 border-l-primary")}>
+                                            <td className="px-4 py-3">
+                                                <button
+                                                    onClick={() => onToggleStation(station)}
+                                                    className={cn(
+                                                        "w-5 h-5 rounded border flex items-center justify-center transition-colors bg-primary border-primary text-primary-foreground"
+                                                    )}
+                                                    title="Deselect"
+                                                >
+                                                    <Check className="h-3 w-3" />
+                                                </button>
+                                            </td>
+                                            <td className="px-4 py-3 font-medium">{station.name}</td>
+                                            <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{station.id}</td>
+                                            <td className="px-4 py-3">
+                                                {station.datacoverage ? `${Math.round(station.datacoverage * 100)}%` : '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                                                {station.mindate ? formatDate(station.mindate) : '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                                                {station.maxdate ? formatDate(station.maxdate) : '-'}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <button
+                                                    onClick={() => toggleExpand(station.id)}
+                                                    disabled={!dataSource}
+                                                    className="p-1 hover:bg-accent rounded-md transition-colors text-muted-foreground"
+                                                >
+                                                    {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {expanded && (
+                                            <tr className="bg-muted/30 border-l-4 border-l-primary">
+                                                <td colSpan={7} className="p-0">
+                                                    <div className="p-4 space-y-3">
+                                                        <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Available Parameters</h4>
+                                                        {loading ? (
+                                                            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                                                                <Loader2 className="h-4 w-4 animate-spin" /> Loading details...
+                                                            </div>
+                                                        ) : details && details.length > 0 ? (
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                                {details.map(dt => (
+                                                                    <div key={dt.id} className="bg-background border rounded p-2 text-xs shadow-sm">
+                                                                        <div className="font-medium text-foreground">{dt.name || dt.id}</div>
+                                                                        <div className="text-muted-foreground font-mono mt-1">{dt.id}</div>
+                                                                        <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
+                                                                            <span>{formatDate(dt.mindate)} - {formatDate(dt.maxdate)}</span>
+                                                                            <span>{Math.round(dt.datacoverage * 100)}%</span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-sm text-muted-foreground italic">No detailed parameter info available.</div>
                                                         )}
-                                                        title="Deselect"
-                                                    >
-                                                        <Check className="h-3 w-3" />
-                                                    </button>
-                                                </td>
-                                                <td className="px-4 py-3 font-medium">{station.name}</td>
-                                                <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{station.id}</td>
-                                                <td className="px-4 py-3">
-                                                    {station.datacoverage ? `${Math.round(station.datacoverage * 100)}%` : '-'}
-                                                </td>
-                                                <td className="px-4 py-3 text-muted-foreground">
-                                                    {station.mindate && station.maxdate ? (
-                                                        <div className="flex flex-col text-xs">
-                                                            <span>{formatDate(station.mindate)}</span>
-                                                            <span>{formatDate(station.maxdate)}</span>
-                                                        </div>
-                                                    ) : '-'}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <button
-                                                        onClick={() => toggleExpand(station.id)}
-                                                        disabled={!dataSource}
-                                                        className="p-1 hover:bg-accent rounded-md transition-colors text-muted-foreground"
-                                                    >
-                                                        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                                    </button>
+                                                    </div>
                                                 </td>
                                             </tr>
-                                            {expanded && (
-                                                <tr className="bg-muted/30 border-l-4 border-l-primary">
-                                                    <td colSpan={6} className="p-0">
-                                                        <div className="p-4 space-y-3">
-                                                            <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Available Parameters</h4>
-                                                            {loading ? (
-                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-                                                                    <Loader2 className="h-4 w-4 animate-spin" /> Loading details...
-                                                                </div>
-                                                            ) : details && details.length > 0 ? (
-                                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                                                    {details.map(dt => (
-                                                                        <div key={dt.id} className="bg-background border rounded p-2 text-xs shadow-sm">
-                                                                            <div className="font-medium text-foreground">{dt.name || dt.id}</div>
-                                                                            <div className="text-muted-foreground font-mono mt-1">{dt.id}</div>
-                                                                            <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-                                                                                <span>{formatDate(dt.mindate)} - {formatDate(dt.maxdate)}</span>
-                                                                                <span>{Math.round(dt.datacoverage * 100)}%</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            ) : (
-                                                                <div className="text-sm text-muted-foreground italic">No detailed parameter info available.</div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </Fragment>
+                                        )}
+                                    </Fragment>
                                     );
                                 })}
-                                <tr className="bg-muted/20 border-b border-border">
-                                    <td colSpan={6} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                        Other Stations
-                                    </td>
-                                </tr>
                             </>
                         )}
+
+                        <tr className="bg-muted/20 border-b border-border">
+                            <td colSpan={7} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Other Stations
+                            </td>
+                        </tr>
+
                         {sortedStations.filter(s => !isSelected(s.id)).map((station) => {
                             const expanded = expandedStationId === station.id;
                             const loading = loadingDetails === station.id;
@@ -194,13 +240,11 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                         <td className="px-4 py-3">
                                             {station.datacoverage ? `${Math.round(station.datacoverage * 100)}%` : '-'}
                                         </td>
-                                        <td className="px-4 py-3 text-muted-foreground">
-                                            {station.mindate && station.maxdate ? (
-                                                <div className="flex flex-col text-xs">
-                                                    <span>{formatDate(station.mindate)}</span>
-                                                    <span>{formatDate(station.maxdate)}</span>
-                                                </div>
-                                            ) : '-'}
+                                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                                            {station.mindate ? formatDate(station.mindate) : '-'}
+                                        </td>
+                                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                                            {station.maxdate ? formatDate(station.maxdate) : '-'}
                                         </td>
                                         <td className="px-4 py-3">
                                             <button
@@ -214,7 +258,7 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                     </tr>
                                     {expanded && (
                                         <tr className="bg-muted/30">
-                                            <td colSpan={6} className="p-0">
+                                            <td colSpan={7} className="p-0">
                                                 <div className="p-4 space-y-3">
                                                     <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Available Parameters</h4>
                                                     {loading ? (

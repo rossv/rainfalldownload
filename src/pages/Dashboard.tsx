@@ -23,6 +23,9 @@ export function Dashboard() {
     const [loading, setLoading] = useState(false);
     const [mapCenter, setMapCenter] = useState<[number, number] | undefined>(undefined);
 
+    // View Mode: 'discovery' (Map focused) vs 'configuration' (Params focused)
+    const [viewMode, setViewMode] = useState<'discovery' | 'configuration'>('discovery');
+
     const activeCredentials = preferences.credentials[preferences.providerId];
 
     const dataSource = useMemo<DataSource | null>(
@@ -138,6 +141,7 @@ export function Dashboard() {
         });
         return Array.from(allTypes.values());
     }, [selectedStations, stationAvailability]);
+
 
 
     const stationsWithData = useMemo(() => {
@@ -267,7 +271,6 @@ export function Dashboard() {
             // Clear detailed errors after 10s
             setTimeout(() => setStatusTasks(prev => prev.filter(t => !t.id.startsWith('err-'))), 10000);
         }
-
         setLoading(false);
     };
 
@@ -335,41 +338,71 @@ export function Dashboard() {
         };
     }, [selectedStations, stationAvailability]);
 
+    const hasData = rainfallData.length > 0;
+
     return (
-        <div className="flex flex-col min-h-screen bg-background p-4 md:p-6 gap-6">
+        <div className={cn(
+            "flex flex-col bg-background p-4 md:p-6 md:pb-8 gap-6 h-full w-full",
+            hasData ? "overflow-y-auto" : "overflow-hidden"
+        )}>
             <StatusCenter tasks={statusTasks} />
 
-            {/* Top Grid Section */}
-            {/* Use fixed height on large screens to force internal scrolling, stack on mobile */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:h-[70vh] min-h-[600px]">
+            {/* Main Content Area - Flex Logic for Animations */}
+            <div className={cn(
+                "flex flex-col lg:flex-row gap-6 relative transition-[height]",
+                hasData ? "h-[60vh] shrink-0" : "flex-1 min-h-0"
+            )}>
 
                 {/* Left Column: Search & Map */}
-                <div className="flex flex-col gap-4 h-full overflow-hidden">
-                    <section className="flex-none bg-card border border-border rounded-xl p-5 shadow-sm space-y-4">
-                        <h2 className="font-semibold text-lg flex items-center gap-2">
-                            <SearchIcon className="h-4 w-4 text-primary" /> Find Stations
-                        </h2>
-                        <StationSearch
-                            dataSource={dataSource}
-                            capabilities={providerCapabilities}
-                            onStationsFound={handleStationsFound}
-                        />
-                    </section>
+                <div
+                    className={cn(
+                        "flex flex-col gap-4 overflow-hidden transition-all duration-700 ease-in-out h-full min-h-0 relative",
+                        viewMode === 'discovery' ? "lg:w-[45%] opacity-100 scale-100" : "lg:w-[15%] opacity-40 hover:opacity-100 cursor-pointer"
+                    )}
+                    onClick={() => {
+                        if (viewMode === 'configuration') setViewMode('discovery');
+                    }}
+                >
+                    {/* Overlay for Show Map */}
+                    {viewMode === 'configuration' && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/10 backdrop-blur-[1px] hover:backdrop-blur-none transition-all">
+                            <div className="bg-primary/90 text-primary-foreground px-4 py-2 rounded-full font-medium shadow-lg transform -rotate-90 lg:rotate-0 whitespace-nowrap flex items-center gap-2 hover:scale-105 transition-transform">
+                                <SearchIcon className="h-4 w-4 rotate-90 lg:rotate-0" /> Show Map
+                            </div>
+                        </div>
+                    )}
 
-                    <div className="flex-1 min-h-[300px] border border-border rounded-xl overflow-hidden shadow-sm relative">
-                        <StationMap
-                            stations={stations}
-                            selectedStations={selectedStations}
-                            onToggleStation={toggleStation}
-                            center={mapCenter}
-                        />
+                    <div className={cn("flex flex-col gap-4 h-full", viewMode === 'configuration' && "pointer-events-none")}>
+                        <section className="flex-none bg-card border border-border rounded-xl p-5 shadow-sm space-y-4">
+
+                            <StationSearch
+                                dataSource={dataSource}
+                                capabilities={providerCapabilities}
+                                onStationsFound={handleStationsFound}
+                            />
+                        </section>
+
+                        <div className="flex-1 min-h-[200px] border border-border rounded-xl overflow-hidden shadow-sm relative">
+                            <StationMap
+                                stations={stations}
+                                selectedStations={selectedStations}
+                                onToggleStation={toggleStation}
+                                center={mapCenter}
+                            />
+                        </div>
                     </div>
                 </div>
 
                 {/* Middle Column: Lists */}
-                <div className="flex flex-col gap-4 h-full overflow-hidden">
+                {/* Always visible but resizes */}
+                <div
+                    className={cn(
+                        "flex flex-col gap-4 overflow-hidden transition-all duration-700 ease-in-out",
+                        viewMode === 'discovery' ? "lg:w-[35%]" : "lg:w-[25%]"
+                    )}
+                >
                     {/* Found Stations List */}
-                    <div className="flex-1 min-h-0 border border-border rounded-xl overflow-hidden shadow-sm flex flex-col">
+                    <div className="flex-1 min-h-0 border border-border rounded-xl overflow-hidden shadow-sm flex flex-col bg-card">
                         <StationList
                             stations={stations}
                             selectedStations={selectedStations}
@@ -377,148 +410,111 @@ export function Dashboard() {
                             dataSource={dataSource}
                         />
                     </div>
-
-
                 </div>
 
                 {/* Right Column: Query Parameters */}
-                <div className="flex flex-col gap-4 h-full overflow-hidden">
-                    <section className="flex-1 bg-card border border-border rounded-xl shadow-sm flex flex-col overflow-hidden">
-                        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                            <h2 className="font-semibold text-lg">Query Parameters</h2>
-                            <div className="space-y-4">
-                                {/* Selected Stations (Compact) */}
-                                <div className="border border-border rounded-lg p-3 bg-card/50">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <label className="text-sm font-medium">Selected Stations ({selectedStations.length})</label>
+                <div
+                    className={cn(
+                        "flex flex-col gap-4 overflow-hidden transition-all duration-700 ease-in-out shadow-xl h-full min-h-0 rounded-xl",
+                        viewMode === 'discovery' ? "lg:w-[20%]" : "lg:w-[60%]"
+                    )}
+                >
+                    <section
+                        className={cn(
+                            "relative flex-1 bg-card border border-border rounded-xl shadow-sm flex flex-col overflow-hidden transition-colors",
+                            viewMode === 'discovery' && "bg-muted/30 border-dashed cursor-pointer hover:bg-muted/50 hover:border-primary/50"
+                        )}
+                        onClick={() => {
+                            if (viewMode === 'discovery') setViewMode('configuration');
+                        }}
+                    >
+                        {viewMode === 'discovery' && (
+                            <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/50 dark:bg-black/50 backdrop-blur-[1px] opacity-0 hover:opacity-100 transition-opacity duration-300">
+                                <span className="px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg font-medium transform scale-100 hover:scale-105 transition-transform">
+                                    Configure Data &rarr;
+                                </span>
+                            </div>
+                        )}
+
+                        <div className={cn(
+                            "flex-1 overflow-y-auto p-5 space-y-6 transition-opacity",
+                            viewMode === 'discovery' ? "opacity-40 pointer-events-none" : "opacity-100"
+                        )}>
+                            <div className="flex justify-between items-center">
+                                <h2 className="font-semibold text-lg flex items-center gap-2">
+                                    {viewMode === 'configuration' && (
                                         <button
-                                            onClick={() => setSelectedStations([])}
-                                            className="text-[10px] text-muted-foreground hover:text-foreground bg-muted/50 px-2 py-0.5 rounded"
+                                            onClick={(e) => { e.stopPropagation(); setViewMode('discovery'); }}
+                                            className="p-1 hover:bg-muted rounded-full mr-2 transition-colors"
+                                            title="Back to Map"
                                         >
-                                            Clear
+                                            <SearchIcon className="h-4 w-4" />
                                         </button>
-                                    </div>
+                                    )}
+                                    Query Parameters
+                                </h2>
+                            </div>
 
-                                    <ul className="space-y-1 max-h-[150px] overflow-y-auto pr-1">
-                                        {selectedStations.length === 0 ? (
-                                            <li className="text-xs text-muted-foreground italic text-center py-2">No stations selected</li>
-                                        ) : (
-                                            selectedStations.map(s => {
-                                                const hasData = stationsWithData.has(s.id);
-                                                return (
-                                                    <li key={s.id} className="flex justify-between items-center text-xs p-1.5 bg-background rounded border border-border group hover:border-primary/50 transition-colors">
-                                                        <div className="overflow-hidden flex-1 min-w-0 mr-2">
-                                                            <div className="font-medium truncate leading-tight" title={s.name}>{s.name}</div>
-                                                            <div className="text-[10px] text-muted-foreground leading-tight">{s.id}</div>
-                                                            <div className="flex flex-wrap gap-1 mt-1">
-                                                                {availabilityLoading[s.id] ? (
-                                                                    <Loader2 className="animate-spin h-3 w-3 text-muted-foreground" />
-                                                                ) : (
-                                                                    selectedDataTypes.map(typeId => {
-                                                                        const isAvailable = stationAvailability[s.id]?.some(dt => dt.id === typeId);
-                                                                        if (!isAvailable) return null;
-                                                                        return (
-                                                                            <span
-                                                                                key={typeId}
-                                                                                className="px-1 py-0.5 rounded-[2px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 text-[9px] font-mono border border-emerald-200 dark:border-emerald-800 leading-none"
-                                                                                title={`${typeId} is available`}
-                                                                            >
-                                                                                {typeId}
-                                                                            </span>
-                                                                        );
-                                                                    })
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            {hasData && (
-                                                                <div className="flex gap-1">
-                                                                    <button
-                                                                        onClick={() => handleDownloadSingleCSV(s)}
-                                                                        className="px-1.5 py-0.5 text-[10px] bg-primary text-primary-foreground border border-primary rounded hover:bg-primary/90 transition-colors font-medium shadow-sm"
-                                                                        title="Download CSV"
-                                                                    >
-                                                                        CSV
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleDownloadSingleSWMM(s)}
-                                                                        className="px-1.5 py-0.5 text-[10px] bg-primary text-primary-foreground border border-primary rounded hover:bg-primary/90 transition-colors font-medium shadow-sm"
-                                                                        title="Download .dat"
-                                                                    >
-                                                                        DAT
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                            <button
-                                                                onClick={() => toggleStation(s)}
-                                                                className="text-muted-foreground hover:text-red-500 hover:bg-red-50 p-0.5 rounded transition-all opacity-60 group-hover:opacity-100"
-                                                                title="Remove"
-                                                            >
-                                                                &times;
-                                                            </button>
-                                                        </div>
-                                                    </li>
-                                                );
-                                            })
+                            <div className="space-y-6">
+                                {/* Selected Stations (Merged into Timeline) */}
+                                {/* The original separate list is removed as requested */}
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-sm font-medium mb-1 block">Date Range</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="date"
+                                                value={dateRange.start}
+                                                min={dateConstraints.min}
+                                                max={dateConstraints.max}
+                                                onChange={e => setDateRange(p => ({ ...p, start: e.target.value }))}
+                                                className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                                            />
+                                            <input
+                                                type="date"
+                                                value={dateRange.end}
+                                                min={dateConstraints.min}
+                                                max={dateConstraints.max}
+                                                onChange={e => setDateRange(p => ({ ...p, end: e.target.value }))}
+                                                className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                                            />
+                                        </div>
+                                        {dateConstraints.min && (
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Available: {dateConstraints.min} to {dateConstraints.max}
+                                            </p>
                                         )}
-                                    </ul>
-                                </div>
-
-                                <div>
-                                    <label className="text-sm font-medium mb-1 block">Date Range</label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="date"
-                                            value={dateRange.start}
-                                            min={dateConstraints.min}
-                                            max={dateConstraints.max}
-                                            onChange={e => setDateRange(p => ({ ...p, start: e.target.value }))}
-                                            className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
-                                        />
-                                        <input
-                                            type="date"
-                                            value={dateRange.end}
-                                            min={dateConstraints.min}
-                                            max={dateConstraints.max}
-                                            onChange={e => setDateRange(p => ({ ...p, end: e.target.value }))}
-                                            className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
-                                        />
                                     </div>
-                                    {dateConstraints.min && (
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                            Available: {dateConstraints.min} to {dateConstraints.max}
-                                        </p>
-                                    )}
+
+                                    {/* AvailabilityTimeline with Integrated Station List */}
+                                    <div className="w-full h-full overflow-hidden">
+                                        {selectedStations.length > 0 ? (
+                                            <AvailabilityTimeline
+                                                stations={selectedStations}
+                                                availability={stationAvailability}
+                                                loading={availabilityLoading}
+                                                selectedStart={dateRange.start}
+                                                selectedEnd={dateRange.end}
+                                                onRangeChange={(start, end) => setDateRange({ start, end })}
+                                                onRemoveStation={(station) => toggleStation(station)}
+                                                onDownloadCSV={handleDownloadSingleCSV}
+                                                onDownloadSWMM={handleDownloadSingleSWMM}
+                                                stationsWithData={stationsWithData}
+                                                selectedDataTypes={selectedDataTypes}
+                                                onToggleDataType={toggleDataType}
+                                            />
+                                        ) : (
+                                            <div className="py-8 flex items-center justify-center text-muted-foreground text-xs italic border border-border/50 border-dashed rounded-xl bg-muted/20">
+                                                Select stations to view timeline
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
-                                {/* Data Types Selector */}
-                                <div>
-                                    <label className="text-sm font-medium mb-1 block">Data Types</label>
-                                    {availableDataTypes.length > 0 ? (
-                                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 text-sm">
-                                            {availableDataTypes.map(dt => (
-                                                <label key={dt.id} className="flex items-start gap-2 border p-2 rounded-md cursor-pointer hover:bg-accent min-h-[40px]">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedDataTypes.includes(dt.id)}
-                                                        onChange={() => toggleDataType(dt.id)}
-                                                        className="mt-0.5 rounded border-gray-300 text-primary focus:ring-primary shrink-0"
-                                                    />
-                                                    <span className="text-xs whitespace-normal leading-tight break-words">
-                                                        {dt.name || dt.id} ({dt.id})
-                                                    </span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="text-sm text-muted-foreground italic border border-dashed p-4 rounded-md text-center">
-                                            Select stations to see available data types
-                                        </div>
-                                    )}
-                                </div>
 
                                 <div>
-                                    <label className="text-sm font-medium mb-1 block">Units</label>
+                                    <label className="text-sm font-medium mb-1 block">Display Units</label>
                                     <div className="flex bg-muted p-1 rounded-lg">
                                         <button
                                             onClick={() => setUnits('standard')}
@@ -543,41 +539,47 @@ export function Dashboard() {
 
                             </div>
 
-                            {rainfallData.length > 0 && selectedStations.length > 0 && (
-                                <div className="pt-4 mt-6 border-t border-border space-y-3">
-                                    <h3 className="font-semibold text-sm">Export Options</h3>
-                                    <div className="grid grid-cols-1 gap-3">
-                                        <button
-                                            onClick={() => downloadCSV(selectedStations, rainfallData)}
-                                            className="w-full py-2 px-4 border border-border hover:bg-accent rounded-lg text-sm font-medium transition-colors text-center"
-                                        >
-                                            Download Single .csv
-                                        </button>
-                                        <button
-                                            onClick={() => downloadSWMM(selectedStations, rainfallData)}
-                                            className="w-full py-2 px-4 border border-border hover:bg-accent rounded-lg text-sm font-medium transition-colors text-center"
-                                        >
-                                            Download Single .dat
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
+
                         </div>
 
-                        <div className="p-5 bg-card border-t border-border z-10 shrink-0 flex items-center gap-3">
+                        <div className={cn(
+                            "p-5 bg-card border-t border-border z-10 shrink-0 flex items-center gap-3 transition-opacity",
+                            viewMode === 'discovery' ? "opacity-40 pointer-events-none" : "opacity-100"
+                        )}>
                             <button
-                                onClick={handleFetchData}
+                                onClick={(e) => { e.stopPropagation(); handleFetchData(); }}
                                 disabled={selectedStations.length === 0 || loading}
-                                className="flex-1 py-3 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-all flex justify-center items-center gap-2 shadow-lg shadow-primary/25"
+                                className={cn(
+                                    "py-3 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-all flex justify-center items-center gap-2 shadow-lg shadow-primary/25",
+                                    hasData ? "w-auto px-6 whitespace-nowrap" : "flex-1"
+                                )}
                             >
                                 {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Download className="h-4 w-4" />}
-                                Fetch Data
+                                <span className="whitespace-nowrap">Fetch Data</span>
                             </button>
+
+                            <div className={cn(
+                                "flex gap-2 overflow-hidden transition-all duration-500 ease-in-out",
+                                hasData ? "w-auto opacity-100" : "w-0 flex-none opacity-0"
+                            )}>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); downloadCSV(selectedStations, rainfallData); }}
+                                    className="flex-1 px-4 py-3 border border-border bg-background hover:bg-accent text-accent-foreground font-medium rounded-lg transition-colors flex justify-center items-center gap-2 whitespace-nowrap"
+                                >
+                                    <Download className="h-4 w-4" /> Download Single .csv
+                                </button>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); downloadSWMM(selectedStations, rainfallData); }}
+                                    className="flex-1 px-4 py-3 border border-border bg-background hover:bg-accent text-accent-foreground font-medium rounded-lg transition-colors flex justify-center items-center gap-2 whitespace-nowrap"
+                                >
+                                    <Download className="h-4 w-4" /> Download Single .dat
+                                </button>
+                            </div>
 
                             {/* Notification Box */}
                             {fetchStatus !== 'idle' && (
                                 <div className={cn(
-                                    "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border shadow-sm transition-all animate-in fade-in zoom-in duration-300",
+                                    "flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border shadow-sm transition-all animate-in fade-in zoom-in duration-300 min-w-0",
                                     fetchStatus === 'fresh' && "bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800",
                                     fetchStatus === 'stale' && "bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800",
                                     fetchStatus === 'empty' && "bg-muted text-muted-foreground border-border"
@@ -588,15 +590,15 @@ export function Dashboard() {
                                         fetchStatus === 'stale' && "bg-amber-500",
                                         fetchStatus === 'empty' && "bg-gray-400"
                                     )} />
-                                    <div className="flex flex-col leading-none">
-                                        <span className="font-bold">
+                                    <div className="flex flex-col leading-none overflow-hidden text-center">
+                                        <span className="font-bold truncate">
                                             {fetchStatus === 'fresh' && "Data Ready"}
                                             {fetchStatus === 'stale' && "Update Needed"}
                                             {fetchStatus === 'empty' && "No Results"}
                                         </span>
-                                        {fetchStatus === 'fresh' && <span className="text-[10px] opacity-80 mt-0.5">Graphs updated below &darr;</span>}
-                                        {fetchStatus === 'stale' && <span className="text-[10px] opacity-80 mt-0.5">Parameters changed</span>}
-                                        {fetchStatus === 'empty' && <span className="text-[10px] opacity-80 mt-0.5">Try different dates</span>}
+                                        {fetchStatus === 'fresh' && <span className="text-[10px] opacity-80 mt-0.5 truncate">Graphs updated below &darr;</span>}
+                                        {fetchStatus === 'stale' && <span className="text-[10px] opacity-80 mt-0.5 truncate">Parameters changed</span>}
+                                        {fetchStatus === 'empty' && <span className="text-[10px] opacity-80 mt-0.5 truncate">Try different dates</span>}
                                     </div>
                                 </div>
                             )}
@@ -605,30 +607,17 @@ export function Dashboard() {
                 </div>
             </div>
 
-            {/* Bottom Section */}
-            <div className="flex flex-col gap-6">
-                {/* Availability Timeline */}
-                <div className="w-full">
-                    {selectedStations.length > 0 ? (
-                        <AvailabilityTimeline
-                            stations={selectedStations}
-                            availability={stationAvailability}
-                            loading={availabilityLoading}
-                            selectedStart={dateRange.start}
-                            selectedEnd={dateRange.end}
-                            onRangeChange={(start, end) => setDateRange({ start, end })}
-                        />
-                    ) : (
-                        <div className="py-8 border border-border border-dashed rounded-xl flex items-center justify-center text-muted-foreground text-sm bg-muted/20">
-                            Select stations to view data availability timeline
-                        </div>
-                    )}
-                </div>
+            {/* Bottom Section - Only Charts now */}
+            {hasData && (
+                <div className="flex flex-col gap-6 animate-in slide-in-from-bottom-10 fade-in duration-700 pt-4 border-t">
+                    <div className="flex items-center justify-between px-2">
+                        <h2 className="text-xl font-semibold">Rainfall Analysis</h2>
+                        <span className="text-xs text-muted-foreground">{rainfallData.length} records loaded</span>
+                    </div>
 
-                {/* Rainfall Charts - Stacked by Datatype */}
-                <div className="flex flex-col gap-6 min-h-[400px]">
-                    {rainfallData.length > 0 ? (
-                        Array.from(new Set(rainfallData.map(d => d.datatype || 'PRCP'))).map(dtype => {
+                    {/* Rainfall Charts - Stacked by Datatype */}
+                    <div className="flex flex-col gap-6 mb-12">
+                        {Array.from(new Set(rainfallData.map(d => d.datatype || 'PRCP'))).map(dtype => {
                             const chartData = rainfallData.filter(d => (d.datatype || 'PRCP') === dtype);
                             const stationIds = new Set(chartData.map(d => d.stationId));
                             const relevantStations = selectedStations.filter(s => stationIds.has(s.id));
@@ -646,14 +635,10 @@ export function Dashboard() {
                                     title={copyTitle}
                                 />
                             );
-                        })
-                    ) : (
-                        <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground border-dashed">
-                            No data loaded. Select stations and click "Fetch Rainfall Data".
-                        </div>
-                    )}
+                        })}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }

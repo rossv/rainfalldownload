@@ -15,7 +15,7 @@ export function Layout() {
     const credentialsVersion = useMemo(() => JSON.stringify(preferences.credentials), [preferences.credentials]);
 
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
+        <div className="h-[100dvh] overflow-hidden bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
             <header className="border-b border-border bg-card p-4 sticky top-0 z-30 shadow-sm backdrop-blur-md bg-opacity-80">
                 <div className="container mx-auto flex justify-between items-center">
                     <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
@@ -41,10 +41,15 @@ export function Layout() {
                         </button>
                         <button
                             onClick={toggleDarkMode}
-                            className="p-2 hover:bg-muted rounded-full transition-colors"
+                            className="group relative flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all outline-none focus:ring-2 focus:ring-blue-500/20 active:scale-95 hover:shadow-sm"
                             title="Toggle Theme"
                         >
-                            {preferences.darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                            <div className={`p-1 rounded-md transition-all duration-500 ${preferences.darkMode ? 'rotate-90 bg-transparent text-slate-400' : 'rotate-0 bg-white shadow-sm text-amber-500'}`}>
+                                <Sun className="h-4 w-4" />
+                            </div>
+                            <div className={`p-1 rounded-md transition-all duration-500 ${preferences.darkMode ? 'rotate-0 bg-slate-700 shadow-sm text-blue-400' : '-rotate-90 bg-transparent text-slate-400'}`}>
+                                <Moon className="h-4 w-4" />
+                            </div>
                         </button>
                         <button
                             onClick={() => setShowSettings(true)}
@@ -57,12 +62,12 @@ export function Layout() {
                 </div>
             </header>
 
-            <main className="flex-1">
+            <main className="flex-1 overflow-hidden flex flex-col relative">
                 <Outlet context={{ preferences }} />
             </main>
 
-            <footer className="border-t border-border p-6 bg-card mt-auto">
-                <div className="container mx-auto flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground gap-4">
+            <footer className="border-t border-border p-2 bg-card mt-auto transition-[padding,height]">
+                <div className="container mx-auto flex flex-col md:flex-row justify-between items-center text-xs text-muted-foreground gap-2">
                     <p>© 2025 Rainfall Downloader. Open Source.</p>
                     <div className="flex gap-4">
                         <button onClick={() => setShowHelp(true)} className="hover:text-foreground transition-colors">Help & Info</button>
