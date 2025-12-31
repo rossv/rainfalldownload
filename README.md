@@ -9,7 +9,7 @@ Rainfall Downloader is a lightweight web app for exploring and exporting precipi
 ## Overview
 - Search for NOAA weather stations by city, ZIP code, or map navigation.
 - Inspect station metadata and data-type availability timelines before downloading.
-- Fetch precipitation records for one or more stations and visualize them immediately.
+- Fetch precipitation, snowfall depth, or snow water equivalent records for one or more stations and visualize them immediately.
 - Export downloads as CSV or SWMM-formatted time series for hydraulic models.
 
 ## Getting Started
@@ -43,7 +43,7 @@ The dev server runs at http://localhost:5173/. Vite proxies NOAA and Nominatim r
 ## Usage
 1. **Find stations:** Use the search panel to locate stations by place name/ZIP or pan the map. Results appear as markers and in the station list.
 2. **Check availability:** Select stations to view their data-type timelines and valid date ranges before requesting data.
-3. **Fetch data:** Choose a date range, units, and data types (e.g., PRCP) and click **Fetch Rainfall Data**.
+3. **Fetch data:** Choose a dataset (daily GHCND, hourly PRECIP_HLY, or GSOM/GSOY summaries), a date range, units, and one or more datatypes (e.g., PRCP, SNOW, SNWD) and click **Fetch Rainfall Data**.
 4. **Export:** Download results as CSV or SWMM format from the export buttons beneath the chart.
 
 ## Providers, resolution, and limitations
@@ -61,6 +61,11 @@ Rainfall Downloader currently ships with NOAA CDO, with additional sources in th
 - **NASA GPM IMERG:** Delivers gridded millimeters; conversion to inches will be handled in-app when added.
 - **Meteostat:** Provides metric units by default; convert to inches if needed when exporting.
 - **OpenWeatherMap:** Returns millimeters for `rain`/`snow` fields; daily aggregates vary by endpoint (e.g., One Call 3.0 vs. history API).
+
+### Dataset and datatype selection
+- Pick a CDO dataset in the **Query Parameters** pane: daily `GHCND`, hourly `PRECIP_HLY`, or summary products `GSOM`/`GSOY`.
+- Check one or more datatypes to include in downloads; common precipitation and snow identifiers like `PRCP`, `SNOW`, `SNWD`, `WESD`, and `WESF` are whitelisted in the UI and passed directly to NOAA.
+- Station search, availability lookups, and caching all respect the chosen dataset/datatype combination to avoid collisions.
 
 ### Provider selection matrix
 Use this quick guide to pick the right source for your scenario:

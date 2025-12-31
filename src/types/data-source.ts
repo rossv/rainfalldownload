@@ -23,13 +23,18 @@ export interface DataSourceOptions {
     credentials?: ProviderCredentials;
 }
 
+export interface DataQueryOptions {
+    datasetId?: string;
+    datatypes?: string[];
+}
+
 export interface DataSource {
     readonly id: string;
     readonly name: string;
     readonly capabilities: DataSourceCapabilities;
 
-    findStationsByCity(city: string, limit?: number, buffer?: number): Promise<Station[]>;
-    findStationsByCoords(lat: number, lon: number, limit?: number, buffer?: number): Promise<Station[]>;
-    getAvailableDataTypes(stationId: string): Promise<DataType[]>;
-    fetchData(params: FetchDataParams): Promise<RainfallData[]>;
+    findStationsByCity(city: string, limit?: number, buffer?: number, options?: DataQueryOptions): Promise<Station[]>;
+    findStationsByCoords(lat: number, lon: number, limit?: number, buffer?: number, options?: DataQueryOptions): Promise<Station[]>;
+    getAvailableDataTypes(stationId: string, options?: DataQueryOptions): Promise<DataType[]>;
+    fetchData(params: FetchDataParams & DataQueryOptions): Promise<RainfallData[]>;
 }

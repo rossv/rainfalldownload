@@ -1,4 +1,4 @@
-import type { DataSource, DataSourceCapabilities, FetchDataParams, RainfallData, Station, DataType } from '../../types';
+import type { DataQueryOptions, DataSource, DataSourceCapabilities, FetchDataParams, RainfallData, Station, DataType } from '../../types';
 
 const TEMPLATE_CAPABILITIES: DataSourceCapabilities = {
     id: 'provider-id',
@@ -18,19 +18,19 @@ export class TemplateProvider implements DataSource {
     readonly name = TEMPLATE_CAPABILITIES.name;
     readonly capabilities = TEMPLATE_CAPABILITIES;
 
-    async findStationsByCity(_city: string, _limit = 20, _buffer = 0.25): Promise<Station[]> {
+    async findStationsByCity(_city: string, _limit = 20, _buffer = 0.25, _options?: DataQueryOptions): Promise<Station[]> {
         throw new Error('Station search not yet implemented for this provider');
     }
 
-    async findStationsByCoords(_lat: number, _lon: number, _limit = 20, _buffer = 0.25): Promise<Station[]> {
+    async findStationsByCoords(_lat: number, _lon: number, _limit = 20, _buffer = 0.25, _options?: DataQueryOptions): Promise<Station[]> {
         throw new Error('Station search not yet implemented for this provider');
     }
 
-    async getAvailableDataTypes(_stationId: string): Promise<DataType[]> {
+    async getAvailableDataTypes(_stationId: string, _options?: DataQueryOptions): Promise<DataType[]> {
         throw new Error('Availability lookup not yet implemented for this provider');
     }
 
-    async fetchData(_params: FetchDataParams): Promise<RainfallData[]> {
+    async fetchData(_params: FetchDataParams & DataQueryOptions): Promise<RainfallData[]> {
         throw new Error('Data fetch not yet implemented for this provider');
     }
 }

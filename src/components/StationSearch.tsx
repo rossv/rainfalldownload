@@ -9,9 +9,11 @@ interface SearchProps {
     dataSource: DataSource | null;
     capabilities: DataSourceCapabilities | null;
     onStationsFound: (stations: Station[], cityCenter?: [number, number]) => void;
+    datasetId?: string;
+    datatypes?: string[];
 }
 
-export function StationSearch({ dataSource, capabilities, onStationsFound }: SearchProps) {
+export function StationSearch({ dataSource, capabilities, onStationsFound, datasetId, datatypes }: SearchProps) {
     const { preferences } = usePreferences();
     const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(false);
@@ -43,7 +45,7 @@ export function StationSearch({ dataSource, capabilities, onStationsFound }: Sea
         setLoading(true);
 
         try {
-            const stations = await dataSource.findStationsByCity(query);
+            const stations = await dataSource.findStationsByCity(query, undefined, undefined, { datasetId, datatypes });
 
             // Calculate approximate center if stations found, else rely on map default
             let center: [number, number] | undefined;
@@ -114,7 +116,7 @@ export function StationSearch({ dataSource, capabilities, onStationsFound }: Sea
             async (position) => {
                 try {
                     const { latitude, longitude } = position.coords;
-                    const stations = await dataSource.findStationsByCoords(latitude, longitude);
+                    const stations = await dataSource.findStationsByCoords(latitude, longitude, undefined, undefined, { datasetId, datatypes });
                     onStationsFound(stations, [latitude, longitude]);
 
                     setQuery(`Current Location (${latitude.toFixed(2)}, ${longitude.toFixed(2)})`);

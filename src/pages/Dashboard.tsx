@@ -12,6 +12,7 @@ import { AvailabilityTimeline } from '../components/AvailabilityTimeline';
 import { StatusCenter } from '../components/StatusCenter';
 import { cn } from '../lib/utils';
 import { usePreferences } from '../hooks/usePreferences';
+import { NOAA_DATATYPE_WHITELIST, NOAA_DATASET_WHITELIST } from '../services/noaa';
 
 export function Dashboard() {
     const { preferences, setUnits } = usePreferences();
@@ -60,14 +61,44 @@ export function Dashboard() {
     const [availabilityLoading, setAvailabilityLoading] = useState<Record<string, boolean>>({});
     const [statusTasks, setStatusTasks] = useState<{ id: string, message: string, status: 'pending' | 'success' | 'error' }[]>([]);
     const [selectedDataTypes, setSelectedDataTypes] = useState<string[]>(['PRCP']);
+    const [datasetId, setDatasetId] = useState<string>(NOAA_DATASET_WHITELIST[0]);
 
     // Track the parameters used for the last successful fetch to determine "staleness"
     const [lastFetchedParams, setLastFetchedParams] = useState<{
         stationIds: string[];
         dateRange: { start: string; end: string };
         dataTypes: string[];
+        datasetId: string;
         timestamp: number;
     } | null>(null);
+
+    const datasetOptions = useMemo(() => ([
+        { id: 'GHCND', label: 'GHCND (Daily)', helper: 'Daily summaries for gauge locations.' },
+        { id: 'PRECIP_HLY', label: 'PRECIP_HLY (Hourly precip)', helper: 'Hourly precipitation-only dataset where available.' },
+        { id: 'GSOM', label: 'GSOM (Monthly summaries)', helper: 'Monthly climate summaries for long-term trends.' },
+        { id: 'GSOY', label: 'GSOY (Annual summaries)', helper: 'Yearly climate summaries from station archives.' }
+    ]), []);
+
+    const datatypeOptions = useMemo(() => ([
+        { id: 'PRCP', label: 'Precipitation', helper: 'Rainfall/precip totals.' },
+        { id: 'SNOW', label: 'Snowfall', helper: 'Daily snowfall depth.' },
+        { id: 'SNWD', label: 'Snow depth', helper: 'Snow depth on ground.' },
+        { id: 'WESD', label: 'Snow water equivalent', helper: 'Water equivalent of snow depth.' },
+        { id: 'WESF', label: 'Snow water equivalent of snowfall', helper: 'Water equivalent of new snowfall.' }
+    ]), []);
+
+    useEffect(() => {
+        setSelectedDataTypes(prev => {
+            const filtered = prev.filter(dt => NOAA_DATATYPE_WHITELIST.includes(dt as typeof NOAA_DATATYPE_WHITELIST[number]));
+            if (filtered.length > 0) return filtered;
+            return ['PRCP'];
+        });
+    }, [datasetId]);
+
+    useEffect(() => {
+        setStationAvailability({});
+        setAvailabilityLoading({});
+    }, [datasetId]);
 
     // Fetch availability when selected stations change
     useEffect(() => {
@@ -87,7 +118,7 @@ export function Dashboard() {
                 setAvailabilityLoading(prev => ({ ...prev, [station.id]: true }));
 
                 try {
-                    const result = await dataSource.getAvailableDataTypes(station.id);
+                    const result = await dataSource.getAvailableDataTypes(station.id, { datasetId });
 
                     // Clamp datatype dates to station's overall valid range
                     // This fixes the issue where NOAA API returns global dataset dates (e.g. 1781) for individual datatypes
@@ -129,7 +160,7 @@ export function Dashboard() {
         };
 
         fetchAvailability();
-    }, [selectedStations, dataSource, stationAvailability, availabilityLoading]);
+    }, [selectedStations, dataSource, stationAvailability, availabilityLoading, datasetId]);
 
     const availableDataTypes = useMemo(() => {
         const allTypes = new Map<string, import('../types').DataType>();
@@ -179,7 +210,8 @@ export function Dashboard() {
                     startDate: dateRange.start,
                     endDate: dateRange.end,
                     units: preferences.units,
-                    datatypes: selectedDataTypes
+                    datatypes: selectedDataTypes,
+                    datasetId
                 });
                 return { success: true, station, data };
             } catch (error: any) {
@@ -219,6 +251,7 @@ export function Dashboard() {
                 stationIds: selectedStations.map(s => s.id).sort(),
                 dateRange: { ...dateRange },
                 dataTypes: [...selectedDataTypes].sort(),
+                datasetId,
                 timestamp: Date.now()
             });
 
@@ -241,6 +274,7 @@ export function Dashboard() {
                     stationIds: selectedStations.map(s => s.id).sort(),
                     dateRange: { ...dateRange },
                     dataTypes: [...selectedDataTypes].sort(),
+                    datasetId,
                     timestamp: Date.now()
                 });
             }
@@ -277,8 +311,8 @@ export function Dashboard() {
     const toggleDataType = (typeId: string) => {
         setSelectedDataTypes(prev =>
             prev.includes(typeId)
-                ? prev.filter(t => t !== typeId)
-                : [...prev, typeId]
+                ? (prev.filter(t => t !== typeId).length > 0 ? prev.filter(t => t !== typeId) : ['PRCP'])
+                : [...new Set([...prev, typeId])]
         );
     };
 
@@ -299,12 +333,14 @@ export function Dashboard() {
 
         const typesChanged = JSON.stringify([...selectedDataTypes].sort()) !== JSON.stringify(lastFetchedParams.dataTypes);
 
-        if (stationsChanged || dateChanged || typesChanged) {
+        const datasetChanged = datasetId !== lastFetchedParams.datasetId;
+
+        if (stationsChanged || dateChanged || typesChanged || datasetChanged) {
             return 'stale';
         }
 
         return 'fresh';
-    }, [rainfallData, lastFetchedParams, selectedStations, dateRange, selectedDataTypes]);
+    }, [rainfallData, lastFetchedParams, selectedStations, dateRange, selectedDataTypes, datasetId]);
 
     const dateConstraints = useMemo(() => {
         if (selectedStations.length === 0) return { min: undefined, max: undefined };
@@ -379,6 +415,8 @@ export function Dashboard() {
                                 dataSource={dataSource}
                                 capabilities={providerCapabilities}
                                 onStationsFound={handleStationsFound}
+                                datasetId={datasetId}
+                                datatypes={selectedDataTypes}
                             />
                         </section>
 
@@ -456,6 +494,50 @@ export function Dashboard() {
                             </div>
 
                             <div className="space-y-6">
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-sm font-medium mb-1 block">Dataset</label>
+                                        <select
+                                            value={datasetId}
+                                            onChange={(e) => setDatasetId(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                                        >
+                                            {datasetOptions.map(opt => (
+                                                <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                            ))}
+                                        </select>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Choose a CDO dataset (daily, hourly, monthly, or yearly). Station search and downloads will request the selected dataset ID.
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-medium mb-1 block">Datatypes</label>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {datatypeOptions.map(opt => {
+                                                const checked = selectedDataTypes.includes(opt.id);
+                                                return (
+                                                    <label key={opt.id} className="flex items-start gap-2 p-2 rounded-md border border-border/70 hover:border-primary/50 transition-colors">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="mt-1"
+                                                            checked={checked}
+                                                            onChange={() => toggleDataType(opt.id)}
+                                                        />
+                                                        <div className="flex-1">
+                                                            <div className="text-sm font-medium leading-tight">{opt.label} <span className="text-[10px] text-muted-foreground font-mono">{opt.id}</span></div>
+                                                            <p className="text-xs text-muted-foreground">{opt.helper}</p>
+                                                        </div>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            NOAA limits datatypes per dataset. Common snow/snow-depth options are included so requests can include {selectedDataTypes.join(', ')}.
+                                        </p>
+                                    </div>
+                                </div>
+
                                 {/* Selected Stations (Merged into Timeline) */}
                                 {/* The original separate list is removed as requested */}
 
