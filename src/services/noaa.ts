@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { Station, RainfallData, DataSource } from '../types';
-import type { DataSourceCapabilities } from '../types/data-source';
+import type { DataQueryOptions, DataSourceCapabilities } from '../types/data-source';
 
 // NOAA-specific constants kept private to the provider implementation.
 const BASE_NOAA = 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
@@ -8,6 +8,11 @@ const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 
 const CACHE_PREFIX = 'noaa_cache_';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+const DEFAULT_DATASET = 'GHCND';
+
+export const NOAA_DATASET_WHITELIST = [DEFAULT_DATASET, 'PRECIP_HLY', 'GSOM', 'GSOY'] as const;
+export const NOAA_DATATYPE_WHITELIST = ['PRCP', 'SNOW', 'SNWD', 'WESD', 'WESF'] as const;
 
 interface CacheEntry<T> {
     value: T;
@@ -48,7 +53,7 @@ export const NOAA_CAPABILITIES: DataSourceCapabilities = {
     supportsStationSearch: true,
     supportsGridInterpolation: false,
     requiresApiKey: true,
-    description: 'NOAA Climate Data Online (GHCND)'
+    description: 'NOAA Climate Data Online station datasets (GHCND, PRECIP_HLY, GSOM, GSOY)'
 };
 
 export class NoaaService implements DataSource {
@@ -68,6 +73,19 @@ export class NoaaService implements DataSource {
 
     private get headers() {
         return { token: this.token };
+    }
+
+    private normalizeDatasetId(datasetId?: string) {
+        return NOAA_DATASET_WHITELIST.includes((datasetId ?? DEFAULT_DATASET) as typeof NOAA_DATASET_WHITELIST[number])
+            ? (datasetId ?? DEFAULT_DATASET)
+            : DEFAULT_DATASET;
+    }
+
+    private normalizeDatatypes(datatypes?: string[]) {
+        const normalized = (datatypes ?? ['PRCP']).filter(dt => NOAA_DATATYPE_WHITELIST.includes(dt as typeof NOAA_DATATYPE_WHITELIST[number]));
+        if (normalized.length === 0) return ['PRCP'];
+        // Deduplicate while preserving order
+        return Array.from(new Set(normalized));
     }
 
 
@@ -156,8 +174,11 @@ export class NoaaService implements DataSource {
         throw lastError;
     }
 
-    async findStationsByCity(city: string, limit = 20, buffer = 0.25): Promise<Station[]> {
-        const cacheKey = `search_${city}_${limit}_${buffer}`;
+    async findStationsByCity(city: string, limit = 20, buffer = 0.25, options: DataQueryOptions = {}): Promise<Station[]> {
+        const datasetId = this.normalizeDatasetId(options.datasetId);
+        const datatypes = this.normalizeDatatypes(options.datatypes);
+
+        const cacheKey = `search_${city}_${limit}_${buffer}_${datasetId}_${datatypes.join(',')}`;
         const cached = getCache<Station[]>(cacheKey);
         if (cached) return cached;
 
@@ -198,11 +219,14 @@ export class NoaaService implements DataSource {
         const latNum = parseFloat(lat);
         const lonNum = parseFloat(lon);
 
-        return this.findStationsByCoords(latNum, lonNum, limit, buffer);
+        return this.findStationsByCoords(latNum, lonNum, limit, buffer, options);
     }
 
-    async findStationsByCoords(lat: number, lon: number, limit = 20, buffer = 0.25): Promise<Station[]> {
-        const cacheKey = `search_coords_${lat}_${lon}_${limit}_${buffer}`;
+    async findStationsByCoords(lat: number, lon: number, limit = 20, buffer = 0.25, options: DataQueryOptions = {}): Promise<Station[]> {
+        const datasetId = this.normalizeDatasetId(options.datasetId);
+        const datatypes = this.normalizeDatatypes(options.datatypes);
+
+        const cacheKey = `search_coords_${lat}_${lon}_${limit}_${buffer}_${datasetId}_${datatypes.join(',')}`;
         const cached = getCache<Station[]>(cacheKey);
         if (cached) return cached;
 
@@ -210,8 +234,8 @@ export class NoaaService implements DataSource {
         const extent = `${lat - buffer},${lon - buffer},${lat + buffer},${lon + buffer}`;
 
         const data: any = await this.request('/stations', {
-            datasetid: 'GHCND',
-            datatypeid: 'PRCP',
+            datasetid: datasetId,
+            datatypeid: datatypes,
             limit,
             extent
         });
@@ -230,14 +254,15 @@ export class NoaaService implements DataSource {
         return stations;
     }
 
-    async getAvailableDataTypes(stationId: string): Promise<import('../types').DataType[]> {
-        const cacheKey = `datatypes_${stationId}`;
+    async getAvailableDataTypes(stationId: string, options: DataQueryOptions = {}): Promise<import('../types').DataType[]> {
+        const datasetId = this.normalizeDatasetId(options.datasetId);
+        const cacheKey = `datatypes_${stationId}_${datasetId}`;
         const cached = getCache<import('../types').DataType[]>(cacheKey);
         if (cached) return cached;
 
         const data: any = await this.request('/datatypes', {
-            datasetid: 'GHCND',
-            stationid: stationId.includes(':') ? stationId : `GHCND:${stationId}`,
+            datasetid: datasetId,
+            stationid: stationId.includes(':') ? stationId : `${datasetId}:${stationId}`,
         });
 
         const types = (data.results || []).map((t: any) => ({
@@ -252,10 +277,13 @@ export class NoaaService implements DataSource {
         return types;
     }
 
-    async fetchData({ stationIds, startDate, endDate, units = 'standard', datatypes = ['PRCP'] }: import('../types').FetchDataParams): Promise<RainfallData[]> {
+    async fetchData({ stationIds, startDate, endDate, units = 'standard', datatypes = ['PRCP'], datasetId }: import('../types').FetchDataParams & DataQueryOptions): Promise<RainfallData[]> {
+        const normalizedDataset = this.normalizeDatasetId(datasetId);
+        const normalizedDatatypes = this.normalizeDatatypes(datatypes);
+
         const promises = stationIds.map(async (sid) => {
-            const id = sid.includes(':') ? sid : `GHCND:${sid}`;
-            const cacheKey = `data_${sid}_${startDate}_${endDate}_${units}_${datatypes.join(',')}`;
+            const id = sid.includes(':') ? sid : `${normalizedDataset}:${sid}`;
+            const cacheKey = `data_${sid}_${startDate}_${endDate}_${units}_${normalizedDataset}_${normalizedDatatypes.join(',')}`;
             const cached = getCache<RainfallData[]>(cacheKey);
             if (cached) return cached;
 
@@ -265,14 +293,14 @@ export class NoaaService implements DataSource {
 
             while (true) {
                 const params: any = {
-                    datasetid: 'GHCND',
+                    datasetid: normalizedDataset,
                     stationid: id,
                     startdate: startDate,
                     enddate: endDate,
                     units: units === 'metric' ? 'metric' : 'standard',
                     limit,
                     offset,
-                    datatypeid: datatypes // Array handling in request() covers this
+                    datatypeid: normalizedDatatypes // Array handling in request() covers this
                 };
 
                 const data: any = await this.request('/data', params);

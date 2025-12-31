@@ -35,6 +35,7 @@ export interface FetchDataParams {
     endDate: string;
     units?: 'standard' | 'metric';
     datatypes?: string[];
+    datasetId?: string;
 }
 
 export * from './data-source';
