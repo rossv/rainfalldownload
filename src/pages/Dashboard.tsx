@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { useState, useMemo, useEffect } from 'react';
 
 import { StationMap } from '../components/StationMap';
@@ -23,6 +24,12 @@ export function Dashboard() {
     const [dateRange, setDateRange] = useState({ start: '2023-01-01', end: '2023-12-31' });
     const [loading, setLoading] = useState(false);
     const [mapCenter, setMapCenter] = useState<[number, number] | undefined>(undefined);
+
+    // Search State (Hoisted from StationSearch)
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [lastSearchType, setLastSearchType] = useState<'text' | 'coords' | null>(null);
+    const [lastSearchCoords, setLastSearchCoords] = useState<[number, number] | null>(null);
 
     // View Mode: 'discovery' (Map focused) vs 'configuration' (Params focused)
     const [viewMode, setViewMode] = useState<'discovery' | 'configuration'>('discovery');
@@ -73,32 +80,154 @@ export function Dashboard() {
     } | null>(null);
 
     const datasetOptions = useMemo(() => ([
-        { id: 'GHCND', label: 'GHCND (Daily)', helper: 'Daily summaries for gauge locations.' },
-        { id: 'PRECIP_HLY', label: 'PRECIP_HLY (Hourly precip)', helper: 'Hourly precipitation-only dataset where available.' },
-        { id: 'GSOM', label: 'GSOM (Monthly summaries)', helper: 'Monthly climate summaries for long-term trends.' },
-        { id: 'GSOY', label: 'GSOY (Annual summaries)', helper: 'Yearly climate summaries from station archives.' }
+        { id: 'GHCND', label: 'Daily (GHCND)', helper: 'Daily summaries for gauge locations.' },
+        { id: 'PRECIP_HLY', label: 'Hourly Precip (PRECIP_HLY)', helper: 'Hourly precipitation-only dataset where available.' },
+        { id: 'GSOM', label: 'Monthly (GSOM)', helper: 'Monthly climate summaries for long-term trends.' },
+        { id: 'GSOY', label: 'Annual (GSOY)', helper: 'Yearly climate summaries from station archives.' }
     ]), []);
 
-    const datatypeOptions = useMemo(() => ([
-        { id: 'PRCP', label: 'Precipitation', helper: 'Rainfall/precip totals.' },
-        { id: 'SNOW', label: 'Snowfall', helper: 'Daily snowfall depth.' },
-        { id: 'SNWD', label: 'Snow depth', helper: 'Snow depth on ground.' },
-        { id: 'WESD', label: 'Snow water equivalent', helper: 'Water equivalent of snow depth.' },
-        { id: 'WESF', label: 'Snow water equivalent of snowfall', helper: 'Water equivalent of new snowfall.' }
-    ]), []);
 
+    // Auto-select defaults when dataset changes
     useEffect(() => {
-        setSelectedDataTypes(prev => {
-            const filtered = prev.filter(dt => NOAA_DATATYPE_WHITELIST.includes(dt as typeof NOAA_DATATYPE_WHITELIST[number]));
-            if (filtered.length > 0) return filtered;
-            return ['PRCP'];
-        });
+        // Clear selected stations to prevent mixing datasets
+        setSelectedStations([]);
+
+        if (datasetId === 'PRECIP_HLY') {
+            setSelectedDataTypes(['HPCP']);
+        } else {
+            setSelectedDataTypes(prev => {
+                const filtered = prev.filter(dt => NOAA_DATATYPE_WHITELIST.includes(dt as typeof NOAA_DATATYPE_WHITELIST[number]) && dt !== 'HPCP');
+                if (filtered.length > 0) return filtered;
+                return ['PRCP'];
+            });
+        }
     }, [datasetId]);
 
     useEffect(() => {
         setStationAvailability({});
         setAvailabilityLoading({});
     }, [datasetId]);
+
+    // --- Search Logic ---
+
+    const searchError = (error: any, defaultMsg: string) => {
+        console.error('Search failed:', error);
+        if (axios.isAxiosError(error)) {
+            console.error('Axios Error Details:', {
+                code: error.code,
+                message: error.message,
+                response: {
+                    status: error.response?.status,
+                    data: error.response?.data,
+                }
+            });
+        }
+        let message = defaultMsg;
+        if (axios.isAxiosError(error)) {
+            if (error.response?.status === 401) {
+                message = 'Invalid API Token. Please check your settings.';
+            } else if (error.response?.status === 503) {
+                message = 'Selected provider is unavailable.';
+            } else if (error.response?.status === 504 || error.code === 'ECONNABORTED') {
+                message = 'The provider is responding slowly. Please retry.';
+            }
+        }
+        alert(message);
+    };
+
+    const performTextSearch = async (query: string, silent = false) => {
+        if (!dataSource || !query.trim()) return;
+
+        // If strict capability checks are needed, add here.
+        // Assuming dataSource is valid if we are here.
+
+        if (!silent) setSearchLoading(true);
+
+        try {
+            const results = await dataSource.findStationsByCity(query, undefined, undefined, { datasetId, datatypes: selectedDataTypes });
+
+            // Calculate center
+            let center: [number, number] | undefined;
+            if (results.length > 0) {
+                const lat = results.reduce((sum, s) => sum + s.latitude, 0) / results.length;
+                const lon = results.reduce((sum, s) => sum + s.longitude, 0) / results.length;
+                center = [lat, lon];
+            }
+
+            handleStationsFound(results, center);
+            setLastSearchType('text');
+        } catch (error) {
+            if (!silent) searchError(error, 'Failed to search stations.');
+        } finally {
+            if (!silent) setSearchLoading(false);
+        }
+    };
+
+    const performCoordsSearch = async (lat: number, lon: number, silent = false) => {
+        if (!dataSource) return;
+
+        if (!silent) setSearchLoading(true);
+        try {
+            const results = await dataSource.findStationsByCoords(lat, lon, undefined, undefined, { datasetId, datatypes: selectedDataTypes });
+            handleStationsFound(results, [lat, lon]);
+            setLastSearchType('coords');
+            setLastSearchCoords([lat, lon]);
+            if (!silent) setSearchQuery(`Location (${lat.toFixed(2)}, ${lon.toFixed(2)})`);
+        } catch (error) {
+            if (!silent) searchError(error, 'Failed to find stations near location.');
+        } finally {
+            if (!silent) setSearchLoading(false);
+        }
+    };
+
+    const handleLocationClick = () => {
+        const caps = providerCapabilities;
+        const creds = activeCredentials;
+        const hasKey = Boolean(creds?.token?.trim() || creds?.apiKey?.trim());
+
+        if (!caps?.supportsStationSearch) {
+            alert('The selected provider does not support station search.');
+            return;
+        }
+        if (!hasKey && caps?.requiresApiKey) {
+            alert('Add your API Token in Settings before searching.');
+            return;
+        }
+
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser');
+            return;
+        }
+
+        setSearchLoading(true);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const { latitude, longitude } = position.coords;
+                performCoordsSearch(latitude, longitude);
+            },
+            (error) => {
+                console.error(error);
+                setSearchLoading(false);
+                alert('Location permission denied or unavailable.');
+            }
+        );
+    };
+
+
+    // Auto-refresh search when Dataset or Datatypes change
+    useEffect(() => {
+        // Debounce or just run?
+        // Run only if we have a valid last search state.
+        if (lastSearchType === 'text' && searchQuery) {
+            performTextSearch(searchQuery, true); // silent refresh
+        } else if (lastSearchType === 'coords' && lastSearchCoords) {
+            performCoordsSearch(lastSearchCoords[0], lastSearchCoords[1], true);
+        }
+    }, [datasetId, dataSource, selectedDataTypes]); // filtered to just datasetId change mainly. Added dataSource for safety.
+
+    // -------------------------------------------------------------------------
+    // --- Logic Restored (Availability, Fetching, Status) ---
+    // -------------------------------------------------------------------------
 
     // Fetch availability when selected stations change
     useEffect(() => {
@@ -110,45 +239,35 @@ export function Dashboard() {
             for (const station of selectedStations) {
                 if (stationAvailability[station.id] !== undefined || availabilityLoading[station.id]) continue;
 
-                // Add task
                 const taskId = `fetch-avail-${station.id}`;
                 newTasks.push({ id: taskId, message: `Checking data for ${station.name}...`, status: 'pending' });
-
-                // Set granular loading
                 setAvailabilityLoading(prev => ({ ...prev, [station.id]: true }));
 
                 try {
                     const result = await dataSource.getAvailableDataTypes(station.id, { datasetId });
 
-                    // Clamp datatype dates to station's overall valid range
-                    // This fixes the issue where NOAA API returns global dataset dates (e.g. 1781) for individual datatypes
+                    // Allow provider to return [] if no data
                     const types = result.map(t => {
                         let minD = t.mindate;
                         let maxD = t.maxdate;
-
                         if (station.mindate && minD < station.mindate) minD = station.mindate;
                         if (station.maxdate && maxD > station.maxdate) maxD = station.maxdate;
-
                         return { ...t, mindate: minD, maxdate: maxD };
                     });
 
                     setStationAvailability(prev => ({ ...prev, [station.id]: types }));
-
                     setStatusTasks(prev => prev.map(t =>
                         t.id === taskId ? { ...t, status: 'success', message: `Found data for ${station.name}` } : t
                     ));
-
-                    // Remove success task after a delay
                     setTimeout(() => {
                         setStatusTasks(prev => prev.filter(t => t.id !== taskId));
                     }, 3000);
-
                 } catch (e) {
                     console.error(e);
                     setStatusTasks(prev => prev.map(t =>
                         t.id === taskId ? { ...t, status: 'error', message: `No data found for ${station.name}` } : t
                     ));
-                    setStationAvailability(prev => ({ ...prev, [station.id]: [] })); // Mark as checked but empty
+                    setStationAvailability(prev => ({ ...prev, [station.id]: [] }));
                 } finally {
                     setAvailabilityLoading(prev => ({ ...prev, [station.id]: false }));
                 }
@@ -173,8 +292,6 @@ export function Dashboard() {
         return Array.from(allTypes.values());
     }, [selectedStations, stationAvailability]);
 
-
-
     const stationsWithData = useMemo(() => {
         return new Set(rainfallData.map(d => d.stationId).filter(Boolean) as string[]);
     }, [rainfallData]);
@@ -198,13 +315,11 @@ export function Dashboard() {
 
         setLoading(true);
         const taskId = 'fetch-rain-batch';
-        // Clear old specific error tasks if any
         setStatusTasks(prev => prev.filter(t => !t.id.startsWith('err-')));
         setStatusTasks(prev => [...prev, { id: taskId, message: `Downloading data for ${selectedStations.length} stations...`, status: 'pending' }]);
 
         const fetchStationData = async (station: Station) => {
             try {
-                // We fetch one by one to isolate errors
                 const data = await dataSource.fetchData({
                     stationIds: [station.id],
                     startDate: dateRange.start,
@@ -216,10 +331,8 @@ export function Dashboard() {
                 return { success: true, station, data };
             } catch (error: any) {
                 let msg = error.message || 'Unknown error';
-                // enhance error message if possible
                 if (error.response) {
                     msg = `HTTP ${error.response.status}`;
-                    if (error.response.statusText) msg += ` ${error.response.statusText}`;
                 } else if (error.code === 'ECONNABORTED') {
                     msg = 'Timeout';
                 }
@@ -246,7 +359,6 @@ export function Dashboard() {
             } : t));
             setTimeout(() => setStatusTasks(prev => prev.filter(t => t.id !== taskId)), 3000);
 
-            // Update last fetched params on full success
             setLastFetchedParams({
                 stationIds: selectedStations.map(s => s.id).sort(),
                 dateRange: { ...dateRange },
@@ -256,7 +368,6 @@ export function Dashboard() {
             });
 
         } else {
-            // Partial or full failure
             const successCount = results.length - errors.length;
             const summaryMsg = successCount > 0
                 ? `Partial Success: ${successCount} ok, ${errors.length} failed.`
@@ -268,7 +379,6 @@ export function Dashboard() {
                 status: 'error'
             } : t));
 
-            // If we got some data, still update the params so the UI shows "Data Ready" (even if partial)
             if (successfulData.length > 0) {
                 setLastFetchedParams({
                     stationIds: selectedStations.map(s => s.id).sort(),
@@ -279,10 +389,8 @@ export function Dashboard() {
                 });
             }
 
-            // Add detailed error tasks (limit to 5 to avoid spam)
             const MAX_ERRORS_SHOWN = 5;
             const displayedErrors = errors.slice(0, MAX_ERRORS_SHOWN);
-
             const newErrorTasks = displayedErrors.map(e => ({
                 id: `err-${e.station.id}-${Date.now()}`,
                 message: `${e.station.name}: ${e.error}`,
@@ -298,11 +406,7 @@ export function Dashboard() {
             }
 
             setStatusTasks(prev => [...prev, ...newErrorTasks]);
-
-            // Clear summary after 5s
             setTimeout(() => setStatusTasks(prev => prev.filter(t => t.id !== taskId)), 5000);
-
-            // Clear detailed errors after 10s
             setTimeout(() => setStatusTasks(prev => prev.filter(t => !t.id.startsWith('err-'))), 10000);
         }
         setLoading(false);
@@ -316,36 +420,26 @@ export function Dashboard() {
         );
     };
 
-    // Determine Fetch Status
     const fetchStatus = useMemo(() => {
         if (!lastFetchedParams) return 'idle';
-
-        // 1. Check if we have data
         if (rainfallData.length === 0) return 'empty';
 
-        // 2. Check if params have changed
         const currentIds = selectedStations.map(s => s.id).sort();
         const prevIds = lastFetchedParams.stationIds;
         const stationsChanged = JSON.stringify(currentIds) !== JSON.stringify(prevIds);
-
         const dateChanged = dateRange.start !== lastFetchedParams.dateRange.start ||
             dateRange.end !== lastFetchedParams.dateRange.end;
-
         const typesChanged = JSON.stringify([...selectedDataTypes].sort()) !== JSON.stringify(lastFetchedParams.dataTypes);
-
         const datasetChanged = datasetId !== lastFetchedParams.datasetId;
 
         if (stationsChanged || dateChanged || typesChanged || datasetChanged) {
             return 'stale';
         }
-
         return 'fresh';
     }, [rainfallData, lastFetchedParams, selectedStations, dateRange, selectedDataTypes, datasetId]);
 
     const dateConstraints = useMemo(() => {
         if (selectedStations.length === 0) return { min: undefined, max: undefined };
-
-        // Collect all start and end dates from availability data if loaded, otherwise fall back to station metadata
         const starts: Date[] = [];
         const ends: Date[] = [];
 
@@ -363,8 +457,6 @@ export function Dashboard() {
         });
 
         if (starts.length === 0) return { min: undefined, max: undefined };
-
-        // Find overall min and max
         const minDate = starts.reduce((a, b) => a < b ? a : b);
         const maxDate = ends.reduce((a, b) => a > b ? a : b);
 
@@ -376,17 +468,18 @@ export function Dashboard() {
 
     const hasData = rainfallData.length > 0;
 
+
     return (
         <div className={cn(
             "flex flex-col bg-background p-4 md:p-6 md:pb-8 gap-6 h-full w-full",
-            hasData ? "overflow-y-auto" : "overflow-hidden"
+            stations.length > 0 ? "overflow-y-auto" : "overflow-hidden" // minor fix for layout
         )}>
             <StatusCenter tasks={statusTasks} />
 
             {/* Main Content Area - Flex Logic for Animations */}
             <div className={cn(
                 "flex flex-col lg:flex-row gap-6 relative transition-[height]",
-                hasData ? "h-[60vh] shrink-0" : "flex-1 min-h-0"
+                stations.length > 0 ? "h-[75vh] shrink-0" : "flex-1 min-h-0"
             )}>
 
                 {/* Left Column: Search & Map */}
@@ -412,11 +505,16 @@ export function Dashboard() {
                         <section className="flex-none bg-card border border-border rounded-xl p-5 shadow-sm space-y-4">
 
                             <StationSearch
-                                dataSource={dataSource}
-                                capabilities={providerCapabilities}
-                                onStationsFound={handleStationsFound}
+                                query={searchQuery}
+                                onQueryChange={setSearchQuery}
+                                onSearch={() => performTextSearch(searchQuery)}
+                                onLocationSearch={handleLocationClick}
+                                loading={searchLoading}
+                                disabled={searchLoading || !dataSource}
+                                showTokenWarning={!activeCredentials?.token && providerCapabilities?.requiresApiKey === true}
                                 datasetId={datasetId}
-                                datatypes={selectedDataTypes}
+                                onDatasetChange={setDatasetId}
+                                datasetOptions={datasetOptions}
                             />
                         </section>
 
@@ -495,47 +593,9 @@ export function Dashboard() {
 
                             <div className="space-y-6">
                                 <div className="space-y-4">
-                                    <div>
-                                        <label className="text-sm font-medium mb-1 block">Dataset</label>
-                                        <select
-                                            value={datasetId}
-                                            onChange={(e) => setDatasetId(e.target.value)}
-                                            className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
-                                        >
-                                            {datasetOptions.map(opt => (
-                                                <option key={opt.id} value={opt.id}>{opt.label}</option>
-                                            ))}
-                                        </select>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                            Choose a CDO dataset (daily, hourly, monthly, or yearly). Station search and downloads will request the selected dataset ID.
-                                        </p>
-                                    </div>
 
-                                    <div>
-                                        <label className="text-sm font-medium mb-1 block">Datatypes</label>
-                                        <div className="grid grid-cols-1 gap-2">
-                                            {datatypeOptions.map(opt => {
-                                                const checked = selectedDataTypes.includes(opt.id);
-                                                return (
-                                                    <label key={opt.id} className="flex items-start gap-2 p-2 rounded-md border border-border/70 hover:border-primary/50 transition-colors">
-                                                        <input
-                                                            type="checkbox"
-                                                            className="mt-1"
-                                                            checked={checked}
-                                                            onChange={() => toggleDataType(opt.id)}
-                                                        />
-                                                        <div className="flex-1">
-                                                            <div className="text-sm font-medium leading-tight">{opt.label} <span className="text-[10px] text-muted-foreground font-mono">{opt.id}</span></div>
-                                                            <p className="text-xs text-muted-foreground">{opt.helper}</p>
-                                                        </div>
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                            NOAA limits datatypes per dataset. Common snow/snow-depth options are included so requests can include {selectedDataTypes.join(', ')}.
-                                        </p>
-                                    </div>
+
+
                                 </div>
 
                                 {/* Selected Stations (Merged into Timeline) */}
@@ -646,19 +706,21 @@ export function Dashboard() {
                             )}>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); downloadCSV(selectedStations, rainfallData, selectedDataTypes); }}
-                                    className="flex-1 px-4 py-3 border border-border bg-background hover:bg-accent text-accent-foreground font-medium rounded-lg transition-colors flex justify-center items-center gap-2 whitespace-nowrap"
+                                    className="flex-1 max-w-[160px] px-3 py-2 border border-border bg-background hover:bg-accent text-accent-foreground text-xs font-medium rounded-lg transition-colors flex flex-col justify-center items-center gap-1.5 whitespace-normal text-center h-auto leading-tight"
                                     aria-label="Download CSV for selected stations"
                                     title="Download CSV for selected stations"
                                 >
-                                    <Download className="h-4 w-4" /> Download CSV for selected stations
+                                    <Download className="h-4 w-4 shrink-0" />
+                                    <span>Download CSV</span>
                                 </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); downloadSWMM(selectedStations, rainfallData, selectedDataTypes); }}
-                                    className="flex-1 px-4 py-3 border border-border bg-background hover:bg-accent text-accent-foreground font-medium rounded-lg transition-colors flex justify-center items-center gap-2 whitespace-nowrap"
+                                    className="flex-1 max-w-[160px] px-3 py-2 border border-border bg-background hover:bg-accent text-accent-foreground text-xs font-medium rounded-lg transition-colors flex flex-col justify-center items-center gap-1.5 whitespace-normal text-center h-auto leading-tight"
                                     aria-label="Download SWMM .dat for selected stations"
                                     title="Download SWMM .dat for selected stations"
                                 >
-                                    <Download className="h-4 w-4" /> Download SWMM .dat for selected stations
+                                    <Download className="h-4 w-4 shrink-0" />
+                                    <span>Download SWMM</span>
                                 </button>
                             </div>
 

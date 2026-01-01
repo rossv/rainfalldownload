@@ -6,13 +6,13 @@ import type { DataQueryOptions, DataSourceCapabilities } from '../types/data-sou
 const BASE_NOAA = 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 
-const CACHE_PREFIX = 'noaa_cache_';
+const CACHE_PREFIX = 'noaa_cache_v5_';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 const DEFAULT_DATASET = 'GHCND';
 
 export const NOAA_DATASET_WHITELIST = [DEFAULT_DATASET, 'PRECIP_HLY', 'GSOM', 'GSOY'] as const;
-export const NOAA_DATATYPE_WHITELIST = ['PRCP', 'SNOW', 'SNWD', 'WESD', 'WESF'] as const;
+export const NOAA_DATATYPE_WHITELIST = ['PRCP', 'SNOW', 'SNWD', 'WESD', 'WESF', 'HPCP', 'QPCP'] as const;
 
 interface CacheEntry<T> {
     value: T;
@@ -81,9 +81,19 @@ export class NoaaService implements DataSource {
             : DEFAULT_DATASET;
     }
 
-    private normalizeDatatypes(datatypes?: string[]) {
-        const normalized = (datatypes ?? ['PRCP']).filter(dt => NOAA_DATATYPE_WHITELIST.includes(dt as typeof NOAA_DATATYPE_WHITELIST[number]));
-        if (normalized.length === 0) return ['PRCP'];
+    private getDefaultDatatype(datasetId: string): string {
+        if (datasetId === 'PRECIP_HLY') return 'HPCP';
+        if (datasetId === 'PRECIP_15') return 'QPCP';
+        return 'PRCP';
+    }
+
+    private normalizeDatatypes(datatypes?: string[], datasetId?: string) {
+        const defaultType = this.getDefaultDatatype(datasetId || DEFAULT_DATASET);
+        const input = datatypes && datatypes.length > 0 ? datatypes : [defaultType];
+
+        const normalized = input.filter(dt => NOAA_DATATYPE_WHITELIST.includes(dt as typeof NOAA_DATATYPE_WHITELIST[number]));
+
+        if (normalized.length === 0) return [defaultType];
         // Deduplicate while preserving order
         return Array.from(new Set(normalized));
     }
@@ -176,7 +186,7 @@ export class NoaaService implements DataSource {
 
     async findStationsByCity(city: string, limit = 20, buffer = 0.25, options: DataQueryOptions = {}): Promise<Station[]> {
         const datasetId = this.normalizeDatasetId(options.datasetId);
-        const datatypes = this.normalizeDatatypes(options.datatypes);
+        const datatypes = this.normalizeDatatypes(options.datatypes, datasetId);
 
         const cacheKey = `search_${city}_${limit}_${buffer}_${datasetId}_${datatypes.join(',')}`;
         const cached = getCache<Station[]>(cacheKey);
@@ -224,7 +234,7 @@ export class NoaaService implements DataSource {
 
     async findStationsByCoords(lat: number, lon: number, limit = 20, buffer = 0.25, options: DataQueryOptions = {}): Promise<Station[]> {
         const datasetId = this.normalizeDatasetId(options.datasetId);
-        const datatypes = this.normalizeDatatypes(options.datatypes);
+        const datatypes = this.normalizeDatatypes(options.datatypes, datasetId);
 
         const cacheKey = `search_coords_${lat}_${lon}_${limit}_${buffer}_${datasetId}_${datatypes.join(',')}`;
         const cached = getCache<Station[]>(cacheKey);
@@ -254,15 +264,61 @@ export class NoaaService implements DataSource {
         return stations;
     }
 
+    private resolveStationId(datasetId: string, stationId: string): string {
+        // If dataset is GHCND, we generally expect GHCND: or RAW ids.
+        // But if dataset is PRECIP_HLY, we need COOP: or WBAN: prefixes usually.
+
+        // 1. If stationId already has a prefix that looks compatible, trust it.
+        // PRECIP_HLY uses COOP: and WBAN:
+        if (datasetId === 'PRECIP_HLY') {
+            if (stationId.startsWith('COOP:') || stationId.startsWith('WBAN:')) {
+                return stationId;
+            }
+        }
+
+        // 2. Strip existing prefix to analyze raw ID
+        const rawId = stationId.includes(':') ? stationId.split(':')[1] : stationId;
+
+        if (datasetId === 'PRECIP_HLY') {
+            // Heuristic for GHCND -> PRECIP_HLY conversion
+            // GHCND:USC00xxxxxx -> COOP:xxxxxx (6 digits)
+            if (rawId.startsWith('USC00')) {
+                return `COOP:${rawId.substring(5)}`;
+            }
+            // GHCND:USW00xxxxx -> WBAN:xxxxx (5 digits)
+            if (rawId.startsWith('USW00')) {
+                return `WBAN:${rawId.substring(5)}`;
+            }
+
+            // If raw ID is numeric and 6 chars, treat as COOP?
+            if (/^\d{6}$/.test(rawId)) return `COOP:${rawId}`;
+            // If raw ID is numeric and 5 chars, treat as WBAN?
+            if (/^\d{5}$/.test(rawId)) return `WBAN:${rawId}`;
+
+            // Fallback: If we can't determine, try COOP if purely numeric, else legacy behavior
+            // We previously forced COOP: here, but that breaks alphanumeric IDs (like CoCoRaHS US1...)
+            // which definitely aren't COOP numeric IDs.
+            // Better to standard prefixing if heuristics fail.
+            return `${datasetId}:${rawId}`;
+        }
+
+        // Default: Ensure using the requested dataset as prefix if no other logic applies
+        // This was the old behavior (e.g. GHCND:ID -> GSOM:ID)
+        // Check if GSOM/GSOY use GHCND IDs? Usually yes.
+        return `${datasetId}:${rawId}`;
+    }
+
     async getAvailableDataTypes(stationId: string, options: DataQueryOptions = {}): Promise<import('../types').DataType[]> {
         const datasetId = this.normalizeDatasetId(options.datasetId);
         const cacheKey = `datatypes_${stationId}_${datasetId}`;
         const cached = getCache<import('../types').DataType[]>(cacheKey);
         if (cached) return cached;
 
+        const queryStationId = this.resolveStationId(datasetId, stationId);
+
         const data: any = await this.request('/datatypes', {
             datasetid: datasetId,
-            stationid: stationId.includes(':') ? stationId : `${datasetId}:${stationId}`,
+            stationid: queryStationId,
         });
 
         const types = (data.results || []).map((t: any) => ({
@@ -279,10 +335,10 @@ export class NoaaService implements DataSource {
 
     async fetchData({ stationIds, startDate, endDate, units = 'standard', datatypes = ['PRCP'], datasetId }: import('../types').FetchDataParams & DataQueryOptions): Promise<RainfallData[]> {
         const normalizedDataset = this.normalizeDatasetId(datasetId);
-        const normalizedDatatypes = this.normalizeDatatypes(datatypes);
+        const normalizedDatatypes = this.normalizeDatatypes(datatypes, normalizedDataset);
 
         const promises = stationIds.map(async (sid) => {
-            const id = sid.includes(':') ? sid : `${normalizedDataset}:${sid}`;
+            const id = this.resolveStationId(normalizedDataset, sid);
             const cacheKey = `data_${sid}_${startDate}_${endDate}_${units}_${normalizedDataset}_${normalizedDatatypes.join(',')}`;
             const cached = getCache<RainfallData[]>(cacheKey);
             if (cached) return cached;
