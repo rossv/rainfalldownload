@@ -1,7 +1,9 @@
 import { NoaaService, NOAA_CAPABILITIES } from '../noaa';
+import { NwisService, USGS_CAPABILITIES } from './usgs';
+import { SynopticService, SYNOPTIC_CAPABILITIES } from './synoptic';
 import type { DataSource, DataSourceCapabilities, DataSourceOptions, ProviderCredentials } from '../../types';
 
-export type ProviderId = 'noaa';
+export type ProviderId = 'noaa' | 'usgs_nwis' | 'synoptic';
 
 export interface ProviderDefinition {
     id: ProviderId;
@@ -32,6 +34,27 @@ const providers: Record<ProviderId, ProviderDefinition> = {
             helperText: 'Generate a free NOAA token to unlock station search and downloads.',
             placeholder: 'Paste your NOAA token',
             signupUrl: 'https://www.ncdc.noaa.gov/cdo-web/token'
+        }
+    },
+    usgs_nwis: {
+        id: 'usgs_nwis',
+        name: 'USGS NWIS',
+        description: 'Real-time USGS water data (Streamflow, Precip)',
+        capabilities: USGS_CAPABILITIES,
+        create: (_options) => new NwisService(),
+        // No auth needed
+    },
+    synoptic: {
+        id: 'synoptic',
+        name: 'Synoptic Data',
+        description: 'Mesonet data (requires API Token)',
+        capabilities: SYNOPTIC_CAPABILITIES,
+        create: ({ credentials }) => new SynopticService({ token: credentials?.token ?? credentials?.apiKey }),
+        auth: {
+            label: 'Synoptic Token',
+            helperText: 'Sign up at Synoptic to get a token.',
+            placeholder: 'Paste Synoptic Token',
+            signupUrl: 'https://developers.synopticdata.com/'
         }
     }
 };

@@ -5,8 +5,8 @@ import { StationMap } from '../components/StationMap';
 import { StationList } from '../components/StationList';
 import { StationSearch } from '../components/StationSearch';
 import { RainfallChart } from '../components/RainfallChart';
-import { createProvider, getProviderCapabilities } from '../services/providers';
-import type { Station, RainfallData, DataSource } from '../types';
+import { createProvider, getProviderCapabilities, listProviders } from '../services/providers';
+import type { Station, UnifiedTimeSeries, DataSource } from '../types';
 import { downloadCSV, downloadSWMM } from '../lib/export';
 import { Loader2, Download, Search as SearchIcon } from 'lucide-react';
 import { AvailabilityTimeline } from '../components/AvailabilityTimeline';
@@ -16,11 +16,11 @@ import { usePreferences } from '../hooks/usePreferences';
 import { NOAA_DATATYPE_WHITELIST, NOAA_DATASET_WHITELIST } from '../services/noaa';
 
 export function Dashboard() {
-    const { preferences, setUnits } = usePreferences();
+    const { preferences, setUnits, setProvider } = usePreferences();
 
     const [stations, setStations] = useState<Station[]>([]);
     const [selectedStations, setSelectedStations] = useState<Station[]>([]);
-    const [rainfallData, setRainfallData] = useState<RainfallData[]>([]);
+    const [rainfallData, setRainfallData] = useState<UnifiedTimeSeries[]>([]);
     const [dateRange, setDateRange] = useState({ start: '2023-01-01', end: '2023-12-31' });
     const [loading, setLoading] = useState(false);
     const [mapCenter, setMapCenter] = useState<[number, number] | undefined>(undefined);
@@ -79,12 +79,27 @@ export function Dashboard() {
         timestamp: number;
     } | null>(null);
 
-    const datasetOptions = useMemo(() => ([
-        { id: 'GHCND', label: 'Daily (GHCND)', helper: 'Daily summaries for gauge locations.' },
-        { id: 'PRECIP_HLY', label: 'Hourly Precip (PRECIP_HLY)', helper: 'Hourly precipitation-only dataset where available.' },
-        { id: 'GSOM', label: 'Monthly (GSOM)', helper: 'Monthly climate summaries for long-term trends.' },
-        { id: 'GSOY', label: 'Annual (GSOY)', helper: 'Yearly climate summaries from station archives.' }
-    ]), []);
+    const datasetOptions = useMemo(() => {
+        if (preferences.providerId === 'noaa') {
+            return [
+                { id: 'GHCND', label: 'Daily (GHCND)', helper: 'Daily summaries for gauge locations.' },
+                { id: 'PRECIP_HLY', label: 'Hourly Precip (PRECIP_HLY)', helper: 'Hourly precipitation-only dataset where available.' },
+                { id: 'GSOM', label: 'Monthly (GSOM)', helper: 'Monthly climate summaries for long-term trends.' },
+                { id: 'GSOY', label: 'Annual (GSOY)', helper: 'Yearly climate summaries from station archives.' }
+            ];
+        }
+        if (preferences.providerId === 'usgs_nwis') {
+            return [
+                { id: 'iv', label: 'Instantaneous Values', helper: 'Real-time high-frequency data (Precip, Flow, Stage).' }
+            ];
+        }
+        if (preferences.providerId === 'synoptic') {
+            return [
+                { id: 'timeseries', label: 'Station Time Series', helper: 'Observed weather parameters.' }
+            ];
+        }
+        return [];
+    }, [preferences.providerId]);
 
 
     // Auto-select defaults when dataset changes
@@ -343,7 +358,7 @@ export function Dashboard() {
         const results = await Promise.all(selectedStations.map(fetchStationData));
 
         const successfulData = results
-            .filter((r): r is { success: true, station: Station, data: RainfallData[] } => r.success)
+            .filter((r): r is { success: true, station: Station, data: UnifiedTimeSeries[] } => r.success)
             .flatMap(r => r.data);
 
         const errors = results
@@ -515,6 +530,9 @@ export function Dashboard() {
                                 datasetId={datasetId}
                                 onDatasetChange={setDatasetId}
                                 datasetOptions={datasetOptions}
+                                providerId={preferences.providerId}
+                                onProviderChange={(val) => setProvider(val as any)}
+                                providerOptions={listProviders()}
                             />
                         </section>
 
@@ -763,10 +781,10 @@ export function Dashboard() {
                         <span className="text-xs text-muted-foreground">{rainfallData.length} records loaded</span>
                     </div>
 
-                    {/* Rainfall Charts - Stacked by Datatype */}
+                    {/* Rainfall Charts - Stacked by Parameter */}
                     <div className="flex flex-col gap-6 mb-12">
-                        {Array.from(new Set(rainfallData.map(d => d.datatype || 'PRCP'))).map(dtype => {
-                            const chartData = rainfallData.filter(d => (d.datatype || 'PRCP') === dtype);
+                        {Array.from(new Set(rainfallData.map(d => d.parameter || 'PRCP'))).map(dtype => {
+                            const chartData = rainfallData.filter(d => (d.parameter || 'PRCP') === dtype);
                             const stationIds = new Set(chartData.map(d => d.stationId));
                             const relevantStations = selectedStations.filter(s => stationIds.has(s.id));
 

@@ -11,6 +11,9 @@ interface StationSearchProps {
     datasetId?: string;
     onDatasetChange?: (val: string) => void;
     datasetOptions?: { id: string, label: string }[];
+    providerId?: string;
+    onProviderChange?: (val: any) => void;
+    providerOptions?: { id: string, name: string }[];
 }
 
 export function StationSearch({
@@ -23,11 +26,26 @@ export function StationSearch({
     showTokenWarning,
     datasetId,
     onDatasetChange,
-    datasetOptions
+    datasetOptions,
+    providerId,
+    onProviderChange,
+    providerOptions
 }: StationSearchProps) {
     return (
         <div className="flex flex-col gap-2">
             <form onSubmit={(e) => { e.preventDefault(); onSearch(); }} className="flex flex-wrap gap-2">
+                {providerId && onProviderChange && providerOptions && (
+                    <select
+                        value={providerId}
+                        onChange={(e) => onProviderChange(e.target.value)}
+                        className="px-3 py-1 rounded-md border border-input bg-primary/5 hover:bg-primary/10 transition-colors text-xs font-semibold text-primary outline-none focus:ring-2 focus:ring-primary/20"
+                        title="Select Data Provider"
+                    >
+                        {providerOptions.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                    </select>
+                )}
                 {datasetId && onDatasetChange && datasetOptions && (
                     <select
                         value={datasetId}

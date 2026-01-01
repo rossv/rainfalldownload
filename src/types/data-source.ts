@@ -1,12 +1,14 @@
-import type { DataType, FetchDataParams, RainfallData, Station } from './index';
+import type { DataType, FetchDataParams, UnifiedTimeSeries, Station } from './index';
 
 export interface DataSourceCapabilities {
     id: string;
     name: string;
     supportsStationSearch: boolean;
+    supportsSpatialSearch: boolean;
     supportsGridInterpolation: boolean;
     requiresApiKey: boolean;
     description?: string;
+    maxDateRangeDays?: number;
 }
 
 export interface ProviderCredentials {
@@ -36,5 +38,5 @@ export interface DataSource {
     findStationsByCity(city: string, limit?: number, buffer?: number, options?: DataQueryOptions): Promise<Station[]>;
     findStationsByCoords(lat: number, lon: number, limit?: number, buffer?: number, options?: DataQueryOptions): Promise<Station[]>;
     getAvailableDataTypes(stationId: string, options?: DataQueryOptions): Promise<DataType[]>;
-    fetchData(params: FetchDataParams & DataQueryOptions): Promise<RainfallData[]>;
+    fetchData(params: FetchDataParams & DataQueryOptions): Promise<UnifiedTimeSeries[]>;
 }

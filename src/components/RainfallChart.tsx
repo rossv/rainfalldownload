@@ -1,10 +1,10 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { useMemo, useState } from 'react';
 import { formatDate } from '../lib/dateUtils';
-import type { RainfallData, Station } from '../types';
+import type { UnifiedTimeSeries, Station } from '../types';
 
 interface ChartProps {
-    data: RainfallData[];
+    data: UnifiedTimeSeries[];
     units: 'standard' | 'metric';
     stations: Station[];
     title: string;
@@ -39,11 +39,11 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
         const grouped = new Map<string, any>();
         const ids = new Set<string>();
         const idMap = new Map<string, string>(); // safeId -> originalId
-        const stationDataMap = new Map<string, { date: Date, value: number }[]>();
+        const stationDataMap = new Map<string, { timestamp: Date, value: number }[]>();
 
         data.forEach(d => {
-            const dateStr = d.date; // Use full ISO string for sorting accurately first
-            const dateObj = new Date(d.date);
+            const timeStr = d.timestamp;
+            const timeObj = new Date(d.timestamp);
             // const simpleDateStr = dateStr.split('T')[0]; // Removed unused variable
             // Actually existing chart uses split('T')[0] which implies daily aggregation or simply ignoring time for the axis label if repeated?
             // The original code used: const dateStr = d.date.split('T')[0]; which merges same-day data? 
@@ -54,31 +54,31 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
             // Requirement mentions "Peak 1-hr intensity" which implies sub-daily data.
             // FIX: Use full date string as key for unique time points.
 
-            if (!grouped.has(dateStr)) {
-                grouped.set(dateStr, { date: d.date });
+            if (!grouped.has(timeStr)) {
+                grouped.set(timeStr, { timestamp: d.timestamp });
             }
 
             if (d.stationId) {
                 const sId = safeId(d.stationId);
-                grouped.get(dateStr)[sId] = d.value;
+                grouped.get(timeStr)[sId] = d.value;
                 ids.add(sId);
                 idMap.set(sId, d.stationId);
 
                 if (!stationDataMap.has(d.stationId)) {
                     stationDataMap.set(d.stationId, []);
                 }
-                stationDataMap.get(d.stationId)?.push({ date: dateObj, value: d.value });
+                stationDataMap.get(d.stationId)?.push({ timestamp: timeObj, value: d.value });
             }
         });
 
-        // Sort chart data by date
+        // Sort chart data by timestamp
         const sorted = Array.from(grouped.values()).sort((a, b) =>
-            new Date(a.date).getTime() - new Date(b.date).getTime()
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
 
         // Calculate Stats
         const stats = Array.from(idMap.entries()).map(([safeId, realId]) => {
-            const seriesData = stationDataMap.get(realId)?.sort((a, b) => a.date.getTime() - b.date.getTime()) || [];
+            const seriesData = stationDataMap.get(realId)?.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()) || [];
             if (seriesData.length === 0) return null;
 
             // 1. Detect Time Step
@@ -87,7 +87,7 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
                 // Check first few intervals to guess
                 const diffs = [];
                 for (let i = 1; i < Math.min(seriesData.length, 5); i++) {
-                    diffs.push((seriesData[i].date.getTime() - seriesData[i - 1].date.getTime()) / 60000);
+                    diffs.push((seriesData[i].timestamp.getTime() - seriesData[i - 1].timestamp.getTime()) / 60000);
                 }
                 // Mode or Min? consistent step usually.
                 intervalMin = diffs.sort((a, b) => a - b)[0] || 0;
@@ -126,7 +126,7 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
                     windowSum += seriesData[right].value;
 
                     // Shrink from left if window > 60 mins
-                    while (seriesData[right].date.getTime() - seriesData[left].date.getTime() > 60 * 60 * 1000) {
+                    while (seriesData[right].timestamp.getTime() - seriesData[left].timestamp.getTime() > 60 * 60 * 1000) {
                         windowSum -= seriesData[left].value;
                         left++;
                     }
@@ -253,7 +253,7 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
                         <BarChart data={chartData}>
                             <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                             <XAxis
-                                dataKey="date"
+                                dataKey="timestamp"
                                 tick={{ fontSize: 12 }}
                                 tickFormatter={(val) => {
                                     const d = new Date(val);

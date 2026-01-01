@@ -1,4 +1,4 @@
-import type { DataQueryOptions, DataSource, DataSourceCapabilities, FetchDataParams, RainfallData, Station, DataType } from '../../types';
+import type { DataQueryOptions, DataSource, DataSourceCapabilities, FetchDataParams, UnifiedTimeSeries, Station, DataType } from '../../types';
 
 const TEMPLATE_CAPABILITIES: DataSourceCapabilities = {
     id: 'provider-id',
@@ -30,7 +30,7 @@ export class TemplateProvider implements DataSource {
         throw new Error('Availability lookup not yet implemented for this provider');
     }
 
-    async fetchData(_params: FetchDataParams & DataQueryOptions): Promise<RainfallData[]> {
+    async fetchData(_params: FetchDataParams & DataQueryOptions): Promise<import('../../types').UnifiedTimeSeries[]> {
         throw new Error('Data fetch not yet implemented for this provider');
     }
 }

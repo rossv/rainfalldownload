@@ -1,10 +1,9 @@
 import axios from 'axios';
-import type { Station, RainfallData, DataSource } from '../types';
+import type { Station, DataSource } from '../types';
 import type { DataQueryOptions, DataSourceCapabilities } from '../types/data-source';
 
 // NOAA-specific constants kept private to the provider implementation.
 const BASE_NOAA = 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
-const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 
 const CACHE_PREFIX = 'noaa_cache_v5_';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
@@ -51,6 +50,7 @@ export const NOAA_CAPABILITIES: DataSourceCapabilities = {
     id: 'noaa',
     name: 'NOAA NCDC',
     supportsStationSearch: true,
+    supportsSpatialSearch: true,
     supportsGridInterpolation: false,
     requiresApiKey: true,
     description: 'NOAA Climate Data Online station datasets (GHCND, PRECIP_HLY, GSOM, GSOY)'
@@ -192,38 +192,17 @@ export class NoaaService implements DataSource {
         const cached = getCache<Station[]>(cacheKey);
         if (cached) return cached;
 
-        // 1. Geocode city
-        // Strategy: Try DIRECT first (browsers often allow it), fallback to PROXY.
         let lat: string, lon: string;
 
         try {
-            console.log(`[RainfallDownloader] Geocoding city (Direct): ${city}`);
-            const geoRes = await axios.get(NOMINATIM_BASE, {
-                params: { q: city, format: 'json', limit: 1 }
-            });
-            if (!geoRes.data || geoRes.data.length === 0) return [];
-            lat = geoRes.data[0].lat;
-            lon = geoRes.data[0].lon;
-        } catch (directError) {
-            console.warn('[RainfallDownloader] Direct Nominatim failed, trying proxy...', directError);
-            // Fallback: Use our robust request method but pointing to Nominatim
-            // We need to manually construct the nominatim URL because request() assumes BASE_NOAA.
-            // Actually, let's just do a manual proxy fetch similar to request() logic but simplified for this one-off.
-
-            const targetUrl = new URL(NOMINATIM_BASE);
-            targetUrl.searchParams.append('q', city);
-            targetUrl.searchParams.append('format', 'json');
-            targetUrl.searchParams.append('limit', '1');
-
-            const fullTargetUrl = targetUrl.toString();
-            // Use corsproxy.io as reliable fallback for nominatim
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(fullTargetUrl)}`;
-
-            const geoRes = await this.fetchWithRetry(proxyUrl, {});
-            // Note: Nominatim response is array
-            if (!geoRes.data || geoRes.data.length === 0) return [];
-            lat = geoRes.data[0].lat;
-            lon = geoRes.data[0].lon;
+            console.log(`[RainfallDownloader] Geocoding city: ${city}`);
+            const coords = await import('./geocoding').then(m => m.geocodeCity(city));
+            if (!coords) return [];
+            lat = coords.lat.toString();
+            lon = coords.lon.toString();
+        } catch (error) {
+            console.warn('[RainfallDownloader] Geocoding failed', error);
+            return [];
         }
 
         const latNum = parseFloat(lat);
@@ -250,14 +229,20 @@ export class NoaaService implements DataSource {
             extent
         });
 
-        const stations = (data.results || []).map((st: any) => ({
+        const stations: Station[] = (data.results || []).map((st: any) => ({
             id: st.id,
+            source: 'NOAA_CDO',
             name: st.name || '',
             latitude: st.latitude,
             longitude: st.longitude,
+            elevation: st.elevation,
             mindate: st.mindate,
             maxdate: st.maxdate,
-            datacoverage: st.datacoverage
+            datacoverage: st.datacoverage,
+            metadata: {
+                datacoverage: st.datacoverage,
+                elevationUnit: st.elevationUnit
+            }
         }));
 
         setCache(cacheKey, stations);
@@ -265,6 +250,7 @@ export class NoaaService implements DataSource {
     }
 
     private resolveStationId(datasetId: string, stationId: string): string {
+        // ... (existing logic same)
         // If dataset is GHCND, we generally expect GHCND: or RAW ids.
         // But if dataset is PRECIP_HLY, we need COOP: or WBAN: prefixes usually.
 
@@ -333,14 +319,14 @@ export class NoaaService implements DataSource {
         return types;
     }
 
-    async fetchData({ stationIds, startDate, endDate, units = 'standard', datatypes = ['PRCP'], datasetId }: import('../types').FetchDataParams & DataQueryOptions): Promise<RainfallData[]> {
+    async fetchData({ stationIds, startDate, endDate, units = 'standard', datatypes = ['PRCP'], datasetId }: import('../types').FetchDataParams & DataQueryOptions): Promise<import('../types').UnifiedTimeSeries[]> {
         const normalizedDataset = this.normalizeDatasetId(datasetId);
         const normalizedDatatypes = this.normalizeDatatypes(datatypes, normalizedDataset);
 
         const promises = stationIds.map(async (sid) => {
             const id = this.resolveStationId(normalizedDataset, sid);
             const cacheKey = `data_${sid}_${startDate}_${endDate}_${units}_${normalizedDataset}_${normalizedDatatypes.join(',')}`;
-            const cached = getCache<RainfallData[]>(cacheKey);
+            const cached = getCache<import('../types').UnifiedTimeSeries[]>(cacheKey);
             if (cached) return cached;
 
             const limit = 1000;
@@ -368,12 +354,20 @@ export class NoaaService implements DataSource {
                 if (offset > 10000) break; // safety
             }
 
-            const data: RainfallData[] = allResults.map((r: any) => ({
-                date: r.date,
+            const data: import('../types').UnifiedTimeSeries[] = allResults.map((r: any) => ({
+                timestamp: r.date,
                 value: r.value,
+                interval: normalizedDataset === 'PRECIP_HLY' ? 60 : 1440, // Crude approx: HLY is hourly, others daily
+                source: 'NOAA_CDO' as const,
+                stationId: sid,
+                parameter: r.datatype,
+                qualityFlag: r.attributes, // Store raw attributes string
+                // Map legacy fields for temporary compat if needed by consumers using UnifiedTimeSeries as generic bucket
+                date: r.date,
                 datatype: r.datatype,
-                stationId: sid
-            })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                originalValue: r.value,
+                originalUnits: units // 'metric' or 'standard'
+            })).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
             setCache(cacheKey, data);
             return data;

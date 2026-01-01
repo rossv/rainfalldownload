@@ -49,9 +49,7 @@ export function SettingsModal({ credentials: initialCredentials, providerId, pro
                                 </option>
                             ))}
                         </select>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Choose a data provider. Additional sources such as GPM or Meteostat can be added later.
-                        </p>
+
                     </div>
 
                     <div>
