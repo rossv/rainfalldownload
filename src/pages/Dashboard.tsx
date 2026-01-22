@@ -30,6 +30,9 @@ export function Dashboard() {
     const [searchLoading, setSearchLoading] = useState(false);
     const [lastSearchType, setLastSearchType] = useState<'text' | 'coords' | null>(null);
     const [lastSearchCoords, setLastSearchCoords] = useState<[number, number] | null>(null);
+    const [coordinateInput, setCoordinateInput] = useState({ lat: '', lon: '' });
+    const [coordinateError, setCoordinateError] = useState<string | null>(null);
+    const [virtualStation, setVirtualStation] = useState<Station | null>(null);
 
     // View Mode: 'discovery' (Map focused) vs 'configuration' (Params focused)
     const [viewMode, setViewMode] = useState<'discovery' | 'configuration'>('discovery');
@@ -49,9 +52,55 @@ export function Dashboard() {
         [preferences.providerId]
     );
 
+    const isPointSelectionMode = Boolean(
+        providerCapabilities?.supportsStationSearch === false && providerCapabilities?.supportsSpatialSearch === true
+    );
+
+    const supportsDataTypeLookup = Boolean(
+        providerCapabilities?.supportsStationSearch !== false
+    );
+
+    const providerSourceType = useMemo<Station['source']>(() => {
+        switch (preferences.providerId) {
+            case 'noaa':
+                return 'NOAA_CDO';
+            case 'usgs_nwis':
+                return 'USGS_NWIS';
+            case 'synoptic':
+                return 'SYNOPTIC';
+            default:
+                return 'NOAA_MRMS';
+        }
+    }, [preferences.providerId]);
+
     const handleStationsFound = (found: Station[], center?: [number, number]) => {
         setStations(found);
         if (center) setMapCenter(center);
+        setVirtualStation(null);
+    };
+
+    const buildVirtualStation = (lat: number, lon: number): Station => {
+        const roundedLat = Number(lat.toFixed(4));
+        const roundedLon = Number(lon.toFixed(4));
+        return {
+            id: `virtual-${roundedLat}-${roundedLon}`,
+            name: `Virtual (${roundedLat}, ${roundedLon})`,
+            latitude: roundedLat,
+            longitude: roundedLon,
+            source: providerSourceType,
+            isVirtual: true
+        };
+    };
+
+    const setVirtualSelection = (lat: number, lon: number) => {
+        const nextStation = buildVirtualStation(lat, lon);
+        setVirtualStation(nextStation);
+        setStations([nextStation]);
+        setSelectedStations([nextStation]);
+        setMapCenter([lat, lon]);
+        setSearchQuery(`Location (${lat.toFixed(2)}, ${lon.toFixed(2)})`);
+        setLastSearchType('coords');
+        setLastSearchCoords([lat, lon]);
     };
 
     const toggleStation = (station: Station) => {
@@ -119,6 +168,17 @@ export function Dashboard() {
     }, [datasetId]);
 
     useEffect(() => {
+        setCoordinateError(null);
+        setCoordinateInput({ lat: '', lon: '' });
+        setVirtualStation(null);
+        if (isPointSelectionMode) {
+            setStations([]);
+            setSelectedStations([]);
+            setMapCenter(undefined);
+        }
+    }, [isPointSelectionMode, preferences.providerId]);
+
+    useEffect(() => {
         setStationAvailability({});
         setAvailabilityLoading({});
     }, [datasetId]);
@@ -150,6 +210,39 @@ export function Dashboard() {
         alert(message);
     };
 
+    const parseCoordinate = (value: string, min: number, max: number): number | null => {
+        if (!value.trim()) return null;
+        const num = Number(value);
+        if (!Number.isFinite(num)) return null;
+        if (num < min || num > max) return null;
+        return num;
+    };
+
+    const handleCoordinateSubmit = () => {
+        const lat = parseCoordinate(coordinateInput.lat, -90, 90);
+        const lon = parseCoordinate(coordinateInput.lon, -180, 180);
+
+        if (lat === null || lon === null) {
+            setCoordinateError('Enter valid latitude (-90 to 90) and longitude (-180 to 180).');
+            return;
+        }
+
+        setCoordinateError(null);
+        setVirtualSelection(lat, lon);
+    };
+
+    const handleCoordinateClear = () => {
+        setCoordinateInput({ lat: '', lon: '' });
+        setCoordinateError(null);
+        setVirtualStation(null);
+        setStations([]);
+        setSelectedStations([]);
+        setMapCenter(undefined);
+        setSearchQuery('');
+        setLastSearchType(null);
+        setLastSearchCoords(null);
+    };
+
     const performTextSearch = async (query: string, silent = false) => {
         if (!dataSource || !query.trim()) return;
 
@@ -179,7 +272,7 @@ export function Dashboard() {
     };
 
     const performCoordsSearch = async (lat: number, lon: number, silent = false) => {
-        if (!dataSource) return;
+        if (!dataSource || !supportsDataTypeLookup) return;
 
         if (!silent) setSearchLoading(true);
         try {
@@ -195,12 +288,39 @@ export function Dashboard() {
         }
     };
 
+    const handlePointSelection = (lat: number, lon: number) => {
+        setCoordinateInput({ lat: lat.toFixed(4), lon: lon.toFixed(4) });
+        setCoordinateError(null);
+        setVirtualSelection(lat, lon);
+    };
+
     const handleLocationClick = () => {
         const caps = providerCapabilities;
         const creds = activeCredentials;
         const hasKey = Boolean(creds?.token?.trim() || creds?.apiKey?.trim());
 
         if (!caps?.supportsStationSearch) {
+            if (caps?.supportsSpatialSearch) {
+                if (!navigator.geolocation) {
+                    alert('Geolocation is not supported by your browser');
+                    return;
+                }
+
+                setSearchLoading(true);
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const { latitude, longitude } = position.coords;
+                        setSearchLoading(false);
+                        handlePointSelection(latitude, longitude);
+                    },
+                    (error) => {
+                        console.error(error);
+                        setSearchLoading(false);
+                        alert('Location permission denied or unavailable.');
+                    }
+                );
+                return;
+            }
             alert('The selected provider does not support station search.');
             return;
         }
@@ -233,12 +353,15 @@ export function Dashboard() {
     useEffect(() => {
         // Debounce or just run?
         // Run only if we have a valid last search state.
+        if (isPointSelectionMode) {
+            return;
+        }
         if (lastSearchType === 'text' && searchQuery) {
             performTextSearch(searchQuery, true); // silent refresh
         } else if (lastSearchType === 'coords' && lastSearchCoords) {
             performCoordsSearch(lastSearchCoords[0], lastSearchCoords[1], true);
         }
-    }, [datasetId, dataSource, selectedDataTypes]); // filtered to just datasetId change mainly. Added dataSource for safety.
+    }, [datasetId, dataSource, selectedDataTypes, isPointSelectionMode]); // filtered to just datasetId change mainly. Added dataSource for safety.
 
     // -------------------------------------------------------------------------
     // --- Logic Restored (Availability, Fetching, Status) ---
@@ -246,12 +369,13 @@ export function Dashboard() {
 
     // Fetch availability when selected stations change
     useEffect(() => {
-        if (!dataSource) return;
+        if (!dataSource || !supportsDataTypeLookup) return;
 
         const fetchAvailability = async () => {
             const newTasks: { id: string, message: string, status: 'pending' | 'success' | 'error' }[] = [];
 
             for (const station of selectedStations) {
+                if (station.isVirtual) continue;
                 if (stationAvailability[station.id] !== undefined || availabilityLoading[station.id]) continue;
 
                 const taskId = `fetch-avail-${station.id}`;
@@ -294,7 +418,7 @@ export function Dashboard() {
         };
 
         fetchAvailability();
-    }, [selectedStations, dataSource, stationAvailability, availabilityLoading, datasetId]);
+    }, [selectedStations, dataSource, stationAvailability, availabilityLoading, datasetId, supportsDataTypeLookup]);
 
     const availableDataTypes = useMemo(() => {
         const allTypes = new Map<string, import('../types').DataType>();
@@ -522,11 +646,28 @@ export function Dashboard() {
                             <StationSearch
                                 query={searchQuery}
                                 onQueryChange={setSearchQuery}
-                                onSearch={() => performTextSearch(searchQuery)}
+                                onSearch={() => {
+                                    if (isPointSelectionMode) {
+                                        handleCoordinateSubmit();
+                                        return;
+                                    }
+                                    performTextSearch(searchQuery);
+                                }}
                                 onLocationSearch={handleLocationClick}
                                 loading={searchLoading}
                                 disabled={searchLoading || !dataSource}
                                 showTokenWarning={!activeCredentials?.token && providerCapabilities?.requiresApiKey === true}
+                                showCoordinateInput={isPointSelectionMode}
+                                coordinateLat={coordinateInput.lat}
+                                coordinateLon={coordinateInput.lon}
+                                coordinateError={coordinateError}
+                                onCoordinateChange={(field, value) => {
+                                    setCoordinateInput(prev => ({ ...prev, [field]: value }));
+                                    setCoordinateError(null);
+                                }}
+                                onCoordinateSubmit={handleCoordinateSubmit}
+                                onCoordinateClear={handleCoordinateClear}
+                                disableTextSearch={isPointSelectionMode}
                                 datasetId={datasetId}
                                 onDatasetChange={setDatasetId}
                                 datasetOptions={datasetOptions}
@@ -542,6 +683,8 @@ export function Dashboard() {
                                 selectedStations={selectedStations}
                                 onToggleStation={toggleStation}
                                 center={mapCenter}
+                                enablePointSelection={isPointSelectionMode}
+                                onSelectPoint={isPointSelectionMode ? handlePointSelection : undefined}
                             />
                         </div>
                     </div>
@@ -562,6 +705,7 @@ export function Dashboard() {
                             selectedStations={selectedStations}
                             onToggleStation={toggleStation}
                             dataSource={dataSource}
+                            supportsDataTypeLookup={supportsDataTypeLookup}
                         />
                     </div>
                 </div>

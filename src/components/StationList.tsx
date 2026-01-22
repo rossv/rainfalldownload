@@ -9,9 +9,16 @@ interface StationListProps {
     selectedStations: Station[];
     onToggleStation: (station: Station) => void;
     dataSource: DataSource | null;
+    supportsDataTypeLookup?: boolean;
 }
 
-export function StationList({ stations, selectedStations, onToggleStation, dataSource }: StationListProps) {
+export function StationList({
+    stations,
+    selectedStations,
+    onToggleStation,
+    dataSource,
+    supportsDataTypeLookup = true
+}: StationListProps) {
     const [expandedStationId, setExpandedStationId] = useState<string | null>(null);
     const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
     const [stationDetails, setStationDetails] = useState<Record<string, DataType[]>>({});
@@ -54,6 +61,14 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
             return;
         }
 
+        const station = stations.find(s => s.id === stationId) || selectedStations.find(s => s.id === stationId);
+        const isVirtual = Boolean(station?.isVirtual);
+
+        if (!supportsDataTypeLookup || isVirtual) {
+            setExpandedStationId(stationId);
+            return;
+        }
+
         if (!dataSource) {
             alert('Configure your data provider in Settings to load station details.');
             return;
@@ -68,8 +83,6 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                 const types = await dataSource.getAvailableDataTypes(stationId);
 
                 // Find existing station data to get limits
-                const station = stations.find(s => s.id === stationId) || selectedStations.find(s => s.id === stationId);
-
                 const clampedTypes = types.map(t => {
                     let minD = t.mindate;
                     let maxD = t.maxdate;
@@ -139,7 +152,7 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                         Selected Stations
                                     </td>
                                 </tr>
-                                {sortedStations.filter(s => isSelected(s.id)).map((station) => {
+                        {sortedStations.filter(s => isSelected(s.id)).map((station) => {
                                     const expanded = expandedStationId === station.id;
                                     const loading = loadingDetails === station.id;
                                     const details = stationDetails[station.id];
@@ -157,8 +170,17 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                                     <Check className="h-3 w-3" />
                                                 </button>
                                             </td>
-                                            <td className="px-4 py-3 font-medium">{station.name}</td>
-                                            <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{station.id}</td>
+                                            <td className="px-4 py-3 font-medium">
+                                                {station.name}
+                                                {station.isVirtual && (
+                                                    <div className="text-[10px] text-muted-foreground">
+                                                        Virtual point · {station.latitude.toFixed(4)}, {station.longitude.toFixed(4)}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 text-muted-foreground font-mono text-xs">
+                                                {station.isVirtual ? 'virtual' : station.id}
+                                            </td>
                                             <td className="px-4 py-3">
                                                 {station.datacoverage ? `${Math.round(station.datacoverage * 100)}%` : '-'}
                                             </td>
@@ -171,8 +193,8 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                             <td className="px-4 py-3">
                                                 <button
                                                     onClick={() => toggleExpand(station.id)}
-                                                    disabled={!dataSource}
-                                                    className="p-1 hover:bg-accent rounded-md transition-colors text-muted-foreground"
+                                                    disabled={!supportsDataTypeLookup || (!dataSource && !station.isVirtual)}
+                                                    className="p-1 hover:bg-accent rounded-md transition-colors text-muted-foreground disabled:opacity-50"
                                                 >
                                                     {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                                 </button>
@@ -183,7 +205,13 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                                 <td colSpan={7} className="p-0">
                                                     <div className="p-4 space-y-3">
                                                         <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Available Parameters</h4>
-                                                        {loading ? (
+                                                        {!supportsDataTypeLookup || station.isVirtual ? (
+                                                            <div className="text-sm text-muted-foreground italic">
+                                                                {station.isVirtual
+                                                                    ? 'Parameter details are not available for virtual stations.'
+                                                                    : 'Parameter details are not available for this provider.'}
+                                                            </div>
+                                                        ) : loading ? (
                                                             <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                                                                 <Loader2 className="h-4 w-4 animate-spin" /> Loading details...
                                                             </div>
@@ -241,8 +269,17 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                             >
                                             </button>
                                         </td>
-                                        <td className="px-4 py-3 font-medium">{station.name}</td>
-                                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{station.id}</td>
+                                        <td className="px-4 py-3 font-medium">
+                                            {station.name}
+                                            {station.isVirtual && (
+                                                <div className="text-[10px] text-muted-foreground">
+                                                    Virtual point · {station.latitude.toFixed(4)}, {station.longitude.toFixed(4)}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs">
+                                            {station.isVirtual ? 'virtual' : station.id}
+                                        </td>
                                         <td className="px-4 py-3">
                                             {station.datacoverage ? `${Math.round(station.datacoverage * 100)}%` : '-'}
                                         </td>
@@ -255,8 +292,8 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                         <td className="px-4 py-3">
                                             <button
                                                 onClick={() => toggleExpand(station.id)}
-                                                disabled={!dataSource}
-                                                className="p-1 hover:bg-accent rounded-md transition-colors text-muted-foreground"
+                                                disabled={!supportsDataTypeLookup || (!dataSource && !station.isVirtual)}
+                                                className="p-1 hover:bg-accent rounded-md transition-colors text-muted-foreground disabled:opacity-50"
                                             >
                                                 {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                             </button>
@@ -267,7 +304,13 @@ export function StationList({ stations, selectedStations, onToggleStation, dataS
                                             <td colSpan={7} className="p-0">
                                                 <div className="p-4 space-y-3">
                                                     <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Available Parameters</h4>
-                                                    {loading ? (
+                                                    {!supportsDataTypeLookup || station.isVirtual ? (
+                                                        <div className="text-sm text-muted-foreground italic">
+                                                            {station.isVirtual
+                                                                ? 'Parameter details are not available for virtual stations.'
+                                                                : 'Parameter details are not available for this provider.'}
+                                                        </div>
+                                                    ) : loading ? (
                                                         <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                                                             <Loader2 className="h-4 w-4 animate-spin" /> Loading details...
                                                         </div>

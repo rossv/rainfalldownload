@@ -6,6 +6,7 @@ export interface Station {
     name: string;
     latitude: number;
     longitude: number;
+    isVirtual?: boolean;
     elevation?: number; // meters
     mindate?: string;
     maxdate?: string;

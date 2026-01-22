@@ -1,4 +1,4 @@
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Station } from '../types';
 import L from 'leaflet';
@@ -32,6 +32,14 @@ let RedIcon = L.icon({
     className: 'leaflet-marker-red' // CSS filter: hue-rotate
 });
 
+let VirtualIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    className: 'leaflet-marker-virtual'
+});
+
 L.Marker.prototype.options.icon = DefaultIcon;
 
 interface MapProps {
@@ -39,6 +47,8 @@ interface MapProps {
     selectedStations: Station[];
     onToggleStation: (station: Station) => void;
     center?: [number, number];
+    enablePointSelection?: boolean;
+    onSelectPoint?: (lat: number, lon: number) => void;
 }
 
 function MapUpdater({ center }: { center?: [number, number] }) {
@@ -51,7 +61,30 @@ function MapUpdater({ center }: { center?: [number, number] }) {
     return null;
 }
 
-export function StationMap({ stations, selectedStations, onToggleStation, center }: MapProps) {
+function MapClickHandler({
+    enabled,
+    onSelectPoint
+}: {
+    enabled: boolean;
+    onSelectPoint?: (lat: number, lon: number) => void;
+}) {
+    useMapEvents({
+        click: (event) => {
+            if (!enabled || !onSelectPoint) return;
+            onSelectPoint(event.latlng.lat, event.latlng.lng);
+        }
+    });
+    return null;
+}
+
+export function StationMap({
+    stations,
+    selectedStations,
+    onToggleStation,
+    center,
+    enablePointSelection = false,
+    onSelectPoint
+}: MapProps) {
     const [darkMode, setDarkMode] = useState(document.documentElement.classList.contains('dark'));
     const [hoveredStation, setHoveredStation] = useState<Station | null>(null);
 
@@ -94,6 +127,9 @@ export function StationMap({ stations, selectedStations, onToggleStation, center
                     filter: hue-rotate(140deg) saturate(3) brightness(0.7); /* Adjust to make it red. Default blue is around 210deg. Red is 0. */
                     /* Blue (210) + 150 = 360 (Red). */
                 }
+                .leaflet-marker-virtual {
+                    filter: hue-rotate(260deg) saturate(2) brightness(1.1);
+                }
             `}</style>
             <MapContainer
                 center={center || [39.8283, -98.5795]}
@@ -115,8 +151,10 @@ export function StationMap({ stations, selectedStations, onToggleStation, center
                     />
                 )}
                 <MapUpdater center={center} />
+                <MapClickHandler enabled={enablePointSelection} onSelectPoint={onSelectPoint} />
                 {stations.map(st => {
                     const isSelected = selectedStations.some(s => s.id === st.id);
+                    const isVirtual = Boolean(st.isVirtual);
 
                     // Check if data is old (older than 1 year)
                     // If maxdate is missing, treat as old
@@ -127,7 +165,9 @@ export function StationMap({ stations, selectedStations, onToggleStation, center
 
                     // Icon selection logic
                     let icon = DefaultIcon;
-                    if (isSelected) {
+                    if (isVirtual) {
+                        icon = VirtualIcon;
+                    } else if (isSelected) {
                         icon = RedIcon;
                     } else if (isOld) {
                         icon = GreyIcon;
@@ -157,19 +197,30 @@ export function StationMap({ stations, selectedStations, onToggleStation, center
                     <div className="space-y-1">
                         <h3 className="font-bold text-sm leading-tight text-foreground">{activeDisplayStation.name}</h3>
                         <p className="text-xs text-muted-foreground font-mono">ID: {activeDisplayStation.id}</p>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-2">
-                            <div>
-                                <span className="text-muted-foreground">Coverage:</span>
-                                <span className="ml-1 font-medium">{(activeDisplayStation.datacoverage ? activeDisplayStation.datacoverage * 100 : 0).toFixed(2)}%</span>
+                        {activeDisplayStation.isVirtual ? (
+                            <div className="space-y-1 pt-2 text-xs text-muted-foreground">
+                                <div>
+                                    Coordinates: {activeDisplayStation.latitude.toFixed(4)}, {activeDisplayStation.longitude.toFixed(4)}
+                                </div>
+                                <div className="text-[10px] italic">Virtual point selection</div>
                             </div>
-                            <div>
-                                <span className="text-muted-foreground mr-1">Dates:</span>
-                                <span className="font-medium">{formatDate(activeDisplayStation.mindate)} - {formatDate(activeDisplayStation.maxdate)}</span>
-                            </div>
-                        </div>
-                        <div className="pt-2 text-[10px] text-muted-foreground italic">
-                            {selectedStations.some(s => s.id === activeDisplayStation.id) ? "Selected" : "Click pin to select"}
-                        </div>
+                        ) : (
+                            <>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-2">
+                                    <div>
+                                        <span className="text-muted-foreground">Coverage:</span>
+                                        <span className="ml-1 font-medium">{(activeDisplayStation.datacoverage ? activeDisplayStation.datacoverage * 100 : 0).toFixed(2)}%</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-muted-foreground mr-1">Dates:</span>
+                                        <span className="font-medium">{formatDate(activeDisplayStation.mindate)} - {formatDate(activeDisplayStation.maxdate)}</span>
+                                    </div>
+                                </div>
+                                <div className="pt-2 text-[10px] text-muted-foreground italic">
+                                    {selectedStations.some(s => s.id === activeDisplayStation.id) ? "Selected" : "Click pin to select"}
+                                </div>
+                            </>
+                        )}
                     </div>
                 ) : (
                     <div className="text-xs text-muted-foreground italic">
