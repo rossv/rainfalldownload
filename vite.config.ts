@@ -17,6 +17,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/noaa/, 'cdo-web/api/v2')
       },
+      '/api/hrrr': {
+        target: process.env.HRRR_PROXY_TARGET ?? 'http://localhost:8787',
+        changeOrigin: true
+      },
       '/api/nominatim': {
         target: 'https://nominatim.openstreetmap.org/',
         changeOrigin: true,

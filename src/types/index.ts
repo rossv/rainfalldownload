@@ -1,4 +1,4 @@
-export type SourceType = 'NOAA_MRMS' | 'SYNOPTIC' | 'USGS_NWIS' | 'NOAA_CDO';
+export type SourceType = 'NOAA_MRMS' | 'SYNOPTIC' | 'USGS_NWIS' | 'NOAA_CDO' | 'NOAA_HRRR';
 
 export interface Station {
     id: string;

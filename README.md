@@ -52,6 +52,7 @@ Rainfall Downloader currently ships with NOAA CDO, with additional sources in th
 | Provider | Spatial / Temporal resolution | Latency | Credentials | Known limitations |
 | --- | --- | --- | --- | --- |
 | **NOAA CDO (live)** | Station locations; daily/hourly precipitation depending on station | ~24 hours for most stations | NOAA CDO token | Station availability varies; gaps in historical records; per-token daily request limits |
+| **NOAA HRRR (proxy required)** | 3 km gridded; hourly to sub-hourly | Minutes to hours | None, but proxy hosting required | Requires server-side HRRR access; large data volume; no direct browser access |
 | **NASA GPM IMERG (roadmap)** | 0.1° gridded; 30-minute and daily | ~12–24 hours after observation | Earthdata Login with app token | Best-effort gauge adjustment; coastal bias in some tiles; rolling retention differs by product (Late vs. Final) |
 | **Meteostat (roadmap)** | Weather stations; hourly and daily | ~1–3 hours behind real time | No token required | Coverage densest in Europe/NA; some stations drop to daily only; rate limits apply to bulk pulls |
 | **OpenWeatherMap (roadmap)** | Point queries; 1-hour precip from current/forecast; aggregated daily | Minutes for current/forecast; daily archives may lag | API key (Free tier supported) | Free tier call caps; forecast skill varies by region; archived history is limited without paid plan |
@@ -86,6 +87,18 @@ Use this quick guide to pick the right source for your scenario:
 - Build the production bundle with `npm run build`; preview locally with `npm run preview`.
 - The Vite config sets `base: '/rainfallldownload/'` for GitHub Pages. If you deploy under a different path, update `base` in `vite.config.ts` to match your hosting URL.
 - All NOAA requests occur client-side; ensure your deployment domain is allowed to call the CDO API and remind users to supply their own tokens.
+
+### HRRR proxy / edge function
+The HRRR grid API requires a server-side proxy because the upstream data service does not allow direct browser access. Deploy the `api/hrrr.ts` edge function (or adapt it to your serverless platform) alongside the app and configure the following environment variables:
+- `HRRR_NCSS_BASE_URL` (optional): Override the default THREDDS NCSS endpoint if you host your own HRRR subset service.
+- `HRRR_CORS_ORIGIN` (optional): Set an allowed origin instead of `*`.
+
+Example request:
+```
+GET /api/hrrr?lat=39.74&lon=-104.99&start=2024-10-01T00:00:00Z&end=2024-10-01T06:00:00Z&params=APCP_surface
+```
+
+For local development, start your edge/runtime worker and set `HRRR_PROXY_TARGET` to its base URL so Vite can forward `/api/hrrr` requests during `npm run dev`.
 
 ## Key Features at a Glance
 - Interactive Leaflet map for spatial station selection.
