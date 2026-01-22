@@ -1,4 +1,6 @@
+import axios from 'axios';
 import type { DataQueryOptions, DataSource, DataSourceCapabilities, DataType, FetchDataParams, Station, UnifiedTimeSeries } from '../../types';
+import { DEFAULT_HRRR_PARAMETER, HRRR_PARAMETER_OPTIONS } from './hrrr-params';
 
 export const HRRR_CAPABILITIES: DataSourceCapabilities = {
     id: 'hrrr',
@@ -8,7 +10,7 @@ export const HRRR_CAPABILITIES: DataSourceCapabilities = {
     supportsStationSearch: false,
     supportsSpatialSearch: true,
     supportsGridInterpolation: true,
-    maxDateRangeDays: 7,
+    maxDateRangeDays: 2,
 };
 
 export class HrrrService implements DataSource {
@@ -28,10 +30,64 @@ export class HrrrService implements DataSource {
     }
 
     async getAvailableDataTypes(_stationId: string, _options?: DataQueryOptions): Promise<DataType[]> {
-        return [];
+        const today = new Date();
+        const start = new Date(today);
+        start.setUTCDate(start.getUTCDate() - 2);
+        const minDate = start.toISOString().split('T')[0];
+        const maxDate = today.toISOString().split('T')[0];
+
+        return HRRR_PARAMETER_OPTIONS.map(option => ({
+            id: option.id,
+            name: `${option.label} (${option.units})`,
+            datacoverage: 1,
+            mindate: minDate,
+            maxdate: maxDate,
+            units: option.units
+        }));
     }
 
-    async fetchData(_params: FetchDataParams & DataQueryOptions): Promise<UnifiedTimeSeries[]> {
-        return [];
+    async fetchData(params: FetchDataParams & DataQueryOptions): Promise<UnifiedTimeSeries[]> {
+        const stationId = params.stationIds?.[0] ?? 'hrrr-virtual';
+        const hrrrOptions = params.hrrr ?? {};
+        const latitude = hrrrOptions.latitude;
+        const longitude = hrrrOptions.longitude;
+
+        if (latitude === undefined || longitude === undefined) {
+            throw new Error('HRRR requests require latitude/longitude coordinates.');
+        }
+
+        const parameterOptions = new Map(HRRR_PARAMETER_OPTIONS.map(option => [option.id, option]));
+        const requested = hrrrOptions.parameters ?? params.datatypes ?? [DEFAULT_HRRR_PARAMETER];
+        const parameters = requested.filter(param => parameterOptions.has(param));
+        const finalParameters = parameters.length > 0 ? parameters : [DEFAULT_HRRR_PARAMETER];
+
+        const response = await axios.get('/api/hrrr', {
+            params: {
+                lat: latitude,
+                lon: longitude,
+                start: params.startDate,
+                end: params.endDate,
+                parameters: finalParameters.join(','),
+                productType: hrrrOptions.productType ?? 'forecast',
+                leadHours: hrrrOptions.leadHours?.join(','),
+                aggregationWindow: hrrrOptions.aggregationWindow ?? 'hourly'
+            }
+        });
+
+        const { series, stationId: apiStationId } = response.data as {
+            stationId?: string;
+            series: Array<{ timestamp: string; value: number; interval: number; parameter: string }>;
+        };
+
+        const normalizedStationId = apiStationId ?? stationId;
+
+        return series.map(point => ({
+            timestamp: point.timestamp,
+            value: point.value,
+            interval: point.interval,
+            source: 'HRRR',
+            stationId: normalizedStationId,
+            parameter: point.parameter
+        }));
     }
 }

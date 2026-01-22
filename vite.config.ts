@@ -12,6 +12,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/api/hrrr': {
+        target: process.env.HRRR_PROXY_TARGET ?? 'http://localhost:3000',
+        changeOrigin: true
+      },
       '/api/noaa': {
         target: 'https://www.ncdc.noaa.gov/',
         changeOrigin: true,
