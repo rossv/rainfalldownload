@@ -52,12 +52,14 @@ Rainfall Downloader currently ships with NOAA CDO, with additional sources in th
 | Provider | Spatial / Temporal resolution | Latency | Credentials | Known limitations |
 | --- | --- | --- | --- | --- |
 | **NOAA CDO (live)** | Station locations; daily/hourly precipitation depending on station | ~24 hours for most stations | NOAA CDO token | Station availability varies; gaps in historical records; per-token daily request limits |
+| **NOAA HRRR (roadmap)** | 3 km gridded; hourly model analyses and forecasts (~18 h) | Hourly refresh | None | Rolling ~30-day archive; model output (not gauge observations) |
 | **NASA GPM IMERG (roadmap)** | 0.1° gridded; 30-minute and daily | ~12–24 hours after observation | Earthdata Login with app token | Best-effort gauge adjustment; coastal bias in some tiles; rolling retention differs by product (Late vs. Final) |
 | **Meteostat (roadmap)** | Weather stations; hourly and daily | ~1–3 hours behind real time | No token required | Coverage densest in Europe/NA; some stations drop to daily only; rate limits apply to bulk pulls |
 | **OpenWeatherMap (roadmap)** | Point queries; 1-hour precip from current/forecast; aggregated daily | Minutes for current/forecast; daily archives may lag | API key (Free tier supported) | Free tier call caps; forecast skill varies by region; archived history is limited without paid plan |
 
 ### Units, coverage, and data nuances
 - **NOAA CDO:** Returns precipitation in tenths of millimeters (metric) or hundredths of inches (standard) per station; set the unit preference in **Settings**.
+- **NOAA HRRR:** Model-generated precipitation in millimeters on 3 km grids; updates hourly with ~18-hour forecasts and a rolling ~30-day archive.
 - **NASA GPM IMERG:** Delivers gridded millimeters; conversion to inches will be handled in-app when added.
 - **Meteostat:** Provides metric units by default; convert to inches if needed when exporting.
 - **OpenWeatherMap:** Returns millimeters for `rain`/`snow` fields; daily aggregates vary by endpoint (e.g., One Call 3.0 vs. history API).
@@ -73,6 +75,7 @@ Use this quick guide to pick the right source for your scenario:
 | Use case | Recommended provider | Why |
 | --- | --- | --- |
 | Hydrologic modeling near a known gauge | NOAA CDO | Station-based quality control and long archives |
+| Short-term modeled precip or forecasts | NOAA HRRR | Rapid-refresh gridded guidance with hourly updates |
 | Broad spatial coverage over ungauged basins | NASA GPM IMERG | Global gridded product with consistent spatial resolution |
 | Rapid updates for recent events in Europe/NA | Meteostat | Frequent refresh with dense regional station network |
 | Quick-look current/forecast precipitation | OpenWeatherMap | Simple point queries with low-latency current/forecast data |

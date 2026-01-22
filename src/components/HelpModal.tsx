@@ -80,6 +80,7 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                                     <h3 className="text-foreground font-semibold">Supported & upcoming providers</h3>
                                     <ul className="list-disc ml-5 space-y-1">
                                         <li><strong>NOAA CDO (live):</strong> Station-based daily/hourly precipitation; ~24 h latency; requires a free CDO token.</li>
+                                        <li><strong>NOAA HRRR (roadmap):</strong> 3 km rapid-refresh model grids; updates hourly with ~18 h forecasts; rolling ~30-day archive.</li>
                                         <li><strong>NASA GPM IMERG (roadmap):</strong> 0.1° gridded, 30-min/daily; ~12–24 h latency; requires Earthdata Login token.</li>
                                         <li><strong>Meteostat (roadmap):</strong> Station hourly/daily; ~1–3 h latency; no token; best coverage in Europe/NA.</li>
                                         <li><strong>OpenWeatherMap (roadmap):</strong> Point current/forecast hourly precip; minute-level latency; free API key; daily archives limited.</li>
@@ -102,7 +103,7 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                                     <ul className="list-disc ml-5 space-y-1">
                                         <li><strong>Units:</strong> NOAA returns tenths of mm (metric) or hundredths of inches (standard). IMERG/Meteostat use mm; OWM `rain`/`snow` fields are mm.</li>
                                         <li><strong>Resolution:</strong> NOAA is station-based; IMERG is 0.1° grids; Meteostat covers stations; OWM is point current/forecast.</li>
-                                        <li><strong>Latency:</strong> NOAA ~24 h; IMERG ~12–24 h (Late/Final); Meteostat ~1–3 h; OWM near-real-time for current/forecast.</li>
+                                        <li><strong>Latency:</strong> NOAA ~24 h; HRRR updates hourly; IMERG ~12–24 h (Late/Final); Meteostat ~1–3 h; OWM near-real-time for current/forecast.</li>
                                     </ul>
                                 </section>
 
@@ -110,6 +111,7 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                                     <h3 className="text-foreground font-semibold">Pick the right provider</h3>
                                     <ul className="list-disc ml-5 space-y-1">
                                         <li><strong>Known gauge near your site:</strong> NOAA CDO for QC’d station records and long archives.</li>
+                                        <li><strong>Short-term modeled precip or forecasts:</strong> NOAA HRRR for rapid-refresh gridded guidance.</li>
                                         <li><strong>Ungauged basin or gridded forcing:</strong> NASA GPM IMERG for uniform coverage.</li>
                                         <li><strong>Fast updates in Europe/NA:</strong> Meteostat for frequent refreshes.</li>
                                         <li><strong>Quick-look or forecasts:</strong> OpenWeatherMap for near-term point precipitation.</li>

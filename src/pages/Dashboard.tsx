@@ -481,6 +481,75 @@ export function Dashboard() {
         };
     }, [selectedStations, stationAvailability]);
 
+    const dateRangeLimitDays = providerCapabilities?.maxDateRangeDays;
+    const toDateString = (date: Date) => date.toISOString().split('T')[0];
+    const toDate = (value: string) => new Date(`${value}T00:00:00`);
+    const addDays = (date: Date, days: number) => {
+        const next = new Date(date);
+        next.setDate(next.getDate() + days);
+        return next;
+    };
+
+    const clampRangeFromStart = (startValue: string, endValue: string) => {
+        if (!startValue || !endValue) return { start: startValue, end: endValue };
+        const minDate = dateConstraints.min ? toDate(dateConstraints.min) : null;
+        const maxDate = dateConstraints.max ? toDate(dateConstraints.max) : null;
+
+        let startDate = toDate(startValue);
+        let endDate = toDate(endValue);
+
+        if (minDate && startDate < minDate) startDate = minDate;
+        if (maxDate && startDate > maxDate) startDate = maxDate;
+
+        if (minDate && endDate < minDate) endDate = minDate;
+        if (maxDate && endDate > maxDate) endDate = maxDate;
+
+        if (endDate < startDate) endDate = startDate;
+
+        if (dateRangeLimitDays && dateRangeLimitDays > 0) {
+            let maxEnd = addDays(startDate, dateRangeLimitDays - 1);
+            if (maxDate && maxEnd > maxDate) maxEnd = maxDate;
+            if (endDate > maxEnd) endDate = maxEnd;
+            if (endDate < startDate) endDate = startDate;
+        }
+
+        return { start: toDateString(startDate), end: toDateString(endDate) };
+    };
+
+    const clampRangeFromEnd = (startValue: string, endValue: string) => {
+        if (!startValue || !endValue) return { start: startValue, end: endValue };
+        const minDate = dateConstraints.min ? toDate(dateConstraints.min) : null;
+        const maxDate = dateConstraints.max ? toDate(dateConstraints.max) : null;
+
+        let startDate = toDate(startValue);
+        let endDate = toDate(endValue);
+
+        if (minDate && startDate < minDate) startDate = minDate;
+        if (maxDate && startDate > maxDate) startDate = maxDate;
+
+        if (minDate && endDate < minDate) endDate = minDate;
+        if (maxDate && endDate > maxDate) endDate = maxDate;
+
+        if (startDate > endDate) startDate = endDate;
+
+        if (dateRangeLimitDays && dateRangeLimitDays > 0) {
+            let minStart = addDays(endDate, -(dateRangeLimitDays - 1));
+            if (minDate && minStart < minDate) minStart = minDate;
+            if (startDate < minStart) startDate = minStart;
+            if (startDate > endDate) startDate = endDate;
+        }
+
+        return { start: toDateString(startDate), end: toDateString(endDate) };
+    };
+
+    useEffect(() => {
+        setDateRange(prev => {
+            const next = clampRangeFromStart(prev.start, prev.end);
+            if (next.start === prev.start && next.end === prev.end) return prev;
+            return next;
+        });
+    }, [dateConstraints.min, dateConstraints.max, dateRangeLimitDays]);
+
     const hasData = rainfallData.length > 0;
 
 
@@ -628,7 +697,7 @@ export function Dashboard() {
                                                 value={dateRange.start}
                                                 min={dateConstraints.min}
                                                 max={dateConstraints.max}
-                                                onChange={e => setDateRange(p => ({ ...p, start: e.target.value }))}
+                                                onChange={e => setDateRange(clampRangeFromStart(e.target.value, dateRange.end))}
                                                 className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
                                             />
                                             <input
@@ -636,13 +705,18 @@ export function Dashboard() {
                                                 value={dateRange.end}
                                                 min={dateConstraints.min}
                                                 max={dateConstraints.max}
-                                                onChange={e => setDateRange(p => ({ ...p, end: e.target.value }))}
+                                                onChange={e => setDateRange(clampRangeFromEnd(dateRange.start, e.target.value))}
                                                 className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
                                             />
                                         </div>
                                         {dateConstraints.min && (
                                             <p className="text-xs text-muted-foreground mt-1">
                                                 Available: {dateConstraints.min} to {dateConstraints.max}
+                                            </p>
+                                        )}
+                                        {providerCapabilities?.maxDateRangeDays && (
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Range limited to {providerCapabilities.maxDateRangeDays} days per request.
                                             </p>
                                         )}
                                     </div>
@@ -656,7 +730,7 @@ export function Dashboard() {
                                                 loading={availabilityLoading}
                                                 selectedStart={dateRange.start}
                                                 selectedEnd={dateRange.end}
-                                                onRangeChange={(start, end) => setDateRange({ start, end })}
+                                                onRangeChange={(start, end) => setDateRange(clampRangeFromStart(start, end))}
                                                 onRemoveStation={(station) => toggleStation(station)}
                                                 onDownloadCSV={handleDownloadSingleCSV}
                                                 onDownloadSWMM={handleDownloadSingleSWMM}
