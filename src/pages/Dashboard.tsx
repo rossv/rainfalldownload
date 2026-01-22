@@ -6,7 +6,7 @@ import { StationList } from '../components/StationList';
 import { StationSearch } from '../components/StationSearch';
 import { RainfallChart } from '../components/RainfallChart';
 import { createProvider, getProviderCapabilities, listProviders } from '../services/providers';
-import type { Station, UnifiedTimeSeries, DataSource } from '../types';
+import type { Station, UnifiedTimeSeries, DataSource, HrrrQueryOptions } from '../types';
 import { downloadCSV, downloadSWMM } from '../lib/export';
 import { Loader2, Download, Search as SearchIcon } from 'lucide-react';
 import { AvailabilityTimeline } from '../components/AvailabilityTimeline';
@@ -14,6 +14,7 @@ import { StatusCenter } from '../components/StatusCenter';
 import { cn } from '../lib/utils';
 import { usePreferences } from '../hooks/usePreferences';
 import { NOAA_DATATYPE_WHITELIST, NOAA_DATASET_WHITELIST } from '../services/noaa';
+import { DEFAULT_HRRR_OPTIONS, HRRR_PARAMETER_OPTIONS } from '../services/providers/hrrr';
 
 export function Dashboard() {
     const { preferences, setUnits, setProvider } = usePreferences();
@@ -69,6 +70,9 @@ export function Dashboard() {
     const [statusTasks, setStatusTasks] = useState<{ id: string, message: string, status: 'pending' | 'success' | 'error' }[]>([]);
     const [selectedDataTypes, setSelectedDataTypes] = useState<string[]>(['PRCP']);
     const [datasetId, setDatasetId] = useState<string>(NOAA_DATASET_WHITELIST[0]);
+    const [hrrrProductType, setHrrrProductType] = useState(DEFAULT_HRRR_OPTIONS.productType);
+    const [hrrrForecastHour, setHrrrForecastHour] = useState(DEFAULT_HRRR_OPTIONS.forecastHour);
+    const [hrrrAggregationWindowHours, setHrrrAggregationWindowHours] = useState(DEFAULT_HRRR_OPTIONS.aggregationWindowHours);
 
     // Track the parameters used for the last successful fetch to determine "staleness"
     const [lastFetchedParams, setLastFetchedParams] = useState<{
@@ -76,6 +80,8 @@ export function Dashboard() {
         dateRange: { start: string; end: string };
         dataTypes: string[];
         datasetId: string;
+        providerId: string;
+        hrrrOptions?: HrrrQueryOptions;
         timestamp: number;
     } | null>(null);
 
@@ -98,30 +104,80 @@ export function Dashboard() {
                 { id: 'timeseries', label: 'Station Time Series', helper: 'Observed weather parameters.' }
             ];
         }
+        if (preferences.providerId === 'hrrr') {
+            return [
+                { id: 'hrrr', label: 'HRRR CONUS Grid', helper: 'High-resolution model output grid.' }
+            ];
+        }
         return [];
     }, [preferences.providerId]);
 
+    const hrrrOptions = useMemo(() => {
+        if (preferences.providerId !== 'hrrr') return undefined;
+        return {
+            productType: hrrrProductType,
+            forecastHour: hrrrForecastHour,
+            aggregationWindowHours: hrrrAggregationWindowHours
+        };
+    }, [hrrrAggregationWindowHours, hrrrForecastHour, hrrrProductType, preferences.providerId]);
+
+    const defaultDataTypes = useMemo(() => {
+        if (preferences.providerId === 'hrrr') {
+            return [HRRR_PARAMETER_OPTIONS[0].id];
+        }
+        if (datasetId === 'PRECIP_HLY') return ['HPCP'];
+        return ['PRCP'];
+    }, [datasetId, preferences.providerId]);
+
+    useEffect(() => {
+        if (datasetOptions.length === 0) return;
+        if (!datasetOptions.some(option => option.id === datasetId)) {
+            setDatasetId(datasetOptions[0].id);
+        }
+    }, [datasetId, datasetOptions]);
+
+    useEffect(() => {
+        if (preferences.providerId !== 'hrrr') return;
+        if (hrrrProductType === 'analysis' && hrrrForecastHour !== 0) {
+            setHrrrForecastHour(0);
+        }
+    }, [hrrrForecastHour, hrrrProductType, preferences.providerId]);
 
     // Auto-select defaults when dataset changes
     useEffect(() => {
         // Clear selected stations to prevent mixing datasets
         setSelectedStations([]);
 
-        if (datasetId === 'PRECIP_HLY') {
-            setSelectedDataTypes(['HPCP']);
-        } else {
-            setSelectedDataTypes(prev => {
-                const filtered = prev.filter(dt => NOAA_DATATYPE_WHITELIST.includes(dt as typeof NOAA_DATATYPE_WHITELIST[number]) && dt !== 'HPCP');
-                if (filtered.length > 0) return filtered;
-                return ['PRCP'];
-            });
+        if (preferences.providerId === 'noaa') {
+            if (datasetId === 'PRECIP_HLY') {
+                setSelectedDataTypes(['HPCP']);
+            } else {
+                setSelectedDataTypes(prev => {
+                    const filtered = prev.filter(dt => NOAA_DATATYPE_WHITELIST.includes(dt as typeof NOAA_DATATYPE_WHITELIST[number]) && dt !== 'HPCP');
+                    if (filtered.length > 0) return filtered;
+                    return ['PRCP'];
+                });
+            }
+            return;
         }
-    }, [datasetId]);
+
+        if (preferences.providerId === 'hrrr') {
+            const allowed = new Set(HRRR_PARAMETER_OPTIONS.map(option => option.id));
+            setSelectedDataTypes(prev => {
+                const filtered = prev.filter(dt => allowed.has(dt));
+                if (filtered.length > 0) return filtered;
+                return [HRRR_PARAMETER_OPTIONS[0].id];
+            });
+            return;
+        }
+
+        setSelectedDataTypes(prev => (prev.length > 0 ? prev : defaultDataTypes));
+    }, [datasetId, defaultDataTypes, preferences.providerId]);
 
     useEffect(() => {
         setStationAvailability({});
         setAvailabilityLoading({});
-    }, [datasetId]);
+    }, [datasetId, preferences.providerId]);
 
     // --- Search Logic ---
 
@@ -159,7 +215,7 @@ export function Dashboard() {
         if (!silent) setSearchLoading(true);
 
         try {
-            const results = await dataSource.findStationsByCity(query, undefined, undefined, { datasetId, datatypes: selectedDataTypes });
+            const results = await dataSource.findStationsByCity(query, undefined, undefined, { datasetId, datatypes: selectedDataTypes, hrrrOptions });
 
             // Calculate center
             let center: [number, number] | undefined;
@@ -183,7 +239,7 @@ export function Dashboard() {
 
         if (!silent) setSearchLoading(true);
         try {
-            const results = await dataSource.findStationsByCoords(lat, lon, undefined, undefined, { datasetId, datatypes: selectedDataTypes });
+            const results = await dataSource.findStationsByCoords(lat, lon, undefined, undefined, { datasetId, datatypes: selectedDataTypes, hrrrOptions });
             handleStationsFound(results, [lat, lon]);
             setLastSearchType('coords');
             setLastSearchCoords([lat, lon]);
@@ -238,7 +294,7 @@ export function Dashboard() {
         } else if (lastSearchType === 'coords' && lastSearchCoords) {
             performCoordsSearch(lastSearchCoords[0], lastSearchCoords[1], true);
         }
-    }, [datasetId, dataSource, selectedDataTypes]); // filtered to just datasetId change mainly. Added dataSource for safety.
+    }, [datasetId, dataSource, hrrrOptions, selectedDataTypes]); // filtered to just datasetId change mainly. Added dataSource for safety.
 
     // -------------------------------------------------------------------------
     // --- Logic Restored (Availability, Fetching, Status) ---
@@ -259,7 +315,7 @@ export function Dashboard() {
                 setAvailabilityLoading(prev => ({ ...prev, [station.id]: true }));
 
                 try {
-                    const result = await dataSource.getAvailableDataTypes(station.id, { datasetId });
+                    const result = await dataSource.getAvailableDataTypes(station.id, { datasetId, hrrrOptions });
 
                     // Allow provider to return [] if no data
                     const types = result.map(t => {
@@ -294,7 +350,7 @@ export function Dashboard() {
         };
 
         fetchAvailability();
-    }, [selectedStations, dataSource, stationAvailability, availabilityLoading, datasetId]);
+    }, [selectedStations, dataSource, stationAvailability, availabilityLoading, datasetId, hrrrOptions]);
 
     const availableDataTypes = useMemo(() => {
         const allTypes = new Map<string, import('../types').DataType>();
@@ -341,7 +397,8 @@ export function Dashboard() {
                     endDate: dateRange.end,
                     units: preferences.units,
                     datatypes: selectedDataTypes,
-                    datasetId
+                    datasetId,
+                    hrrrOptions
                 });
                 return { success: true, station, data };
             } catch (error: any) {
@@ -379,6 +436,8 @@ export function Dashboard() {
                 dateRange: { ...dateRange },
                 dataTypes: [...selectedDataTypes].sort(),
                 datasetId,
+                providerId: preferences.providerId,
+                hrrrOptions,
                 timestamp: Date.now()
             });
 
@@ -400,6 +459,8 @@ export function Dashboard() {
                     dateRange: { ...dateRange },
                     dataTypes: [...selectedDataTypes].sort(),
                     datasetId,
+                    providerId: preferences.providerId,
+                    hrrrOptions,
                     timestamp: Date.now()
                 });
             }
@@ -430,7 +491,7 @@ export function Dashboard() {
     const toggleDataType = (typeId: string) => {
         setSelectedDataTypes(prev =>
             prev.includes(typeId)
-                ? (prev.filter(t => t !== typeId).length > 0 ? prev.filter(t => t !== typeId) : ['PRCP'])
+                ? (prev.filter(t => t !== typeId).length > 0 ? prev.filter(t => t !== typeId) : defaultDataTypes)
                 : [...new Set([...prev, typeId])]
         );
     };
@@ -446,12 +507,14 @@ export function Dashboard() {
             dateRange.end !== lastFetchedParams.dateRange.end;
         const typesChanged = JSON.stringify([...selectedDataTypes].sort()) !== JSON.stringify(lastFetchedParams.dataTypes);
         const datasetChanged = datasetId !== lastFetchedParams.datasetId;
+        const providerChanged = preferences.providerId !== lastFetchedParams.providerId;
+        const hrrrChanged = JSON.stringify(hrrrOptions ?? null) !== JSON.stringify(lastFetchedParams.hrrrOptions ?? null);
 
-        if (stationsChanged || dateChanged || typesChanged || datasetChanged) {
+        if (stationsChanged || dateChanged || typesChanged || datasetChanged || providerChanged || hrrrChanged) {
             return 'stale';
         }
         return 'fresh';
-    }, [rainfallData, lastFetchedParams, selectedStations, dateRange, selectedDataTypes, datasetId]);
+    }, [rainfallData, lastFetchedParams, selectedStations, dateRange, selectedDataTypes, datasetId, preferences.providerId, hrrrOptions]);
 
     const dateConstraints = useMemo(() => {
         if (selectedStations.length === 0) return { min: undefined, max: undefined };
@@ -611,9 +674,56 @@ export function Dashboard() {
 
                             <div className="space-y-6">
                                 <div className="space-y-4">
+                                    {preferences.providerId === 'hrrr' && (
+                                        <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm font-semibold">HRRR Controls</p>
+                                                    <p className="text-xs text-muted-foreground">Configure grid product options.</p>
+                                                </div>
+                                                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Model Grid</span>
+                                            </div>
 
+                                            <div className="grid gap-3">
+                                                <label className="text-xs font-medium text-muted-foreground">Product Type</label>
+                                                <select
+                                                    value={hrrrProductType}
+                                                    onChange={(e) => setHrrrProductType(e.target.value as typeof hrrrProductType)}
+                                                    className="px-3 py-2 rounded-md border border-input bg-background text-sm"
+                                                >
+                                                    <option value="analysis">Analysis (0h)</option>
+                                                    <option value="forecast">Forecast</option>
+                                                </select>
 
+                                                <label className="text-xs font-medium text-muted-foreground">Forecast Lead Hours</label>
+                                                <select
+                                                    value={hrrrForecastHour}
+                                                    onChange={(e) => setHrrrForecastHour(Number(e.target.value))}
+                                                    disabled={hrrrProductType === 'analysis'}
+                                                    className="px-3 py-2 rounded-md border border-input bg-background text-sm disabled:opacity-60"
+                                                >
+                                                    {[0, 1, 2, 3, 6, 9, 12, 15, 18].map(hour => (
+                                                        <option key={hour} value={hour}>
+                                                            {hour} hour{hour === 1 ? '' : 's'}
+                                                        </option>
+                                                    ))}
+                                                </select>
 
+                                                <label className="text-xs font-medium text-muted-foreground">Aggregation Window (hours)</label>
+                                                <select
+                                                    value={hrrrAggregationWindowHours}
+                                                    onChange={(e) => setHrrrAggregationWindowHours(Number(e.target.value))}
+                                                    className="px-3 py-2 rounded-md border border-input bg-background text-sm"
+                                                >
+                                                    {[1, 3, 6, 12].map(hour => (
+                                                        <option key={hour} value={hour}>
+                                                            {hour} hour{hour === 1 ? '' : 's'}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Selected Stations (Merged into Timeline) */}

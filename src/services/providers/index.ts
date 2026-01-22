@@ -1,9 +1,10 @@
 import { NoaaService, NOAA_CAPABILITIES } from '../noaa';
 import { NwisService, USGS_CAPABILITIES } from './usgs';
 import { SynopticService, SYNOPTIC_CAPABILITIES } from './synoptic';
+import { HrrrService, HRRR_CAPABILITIES } from './hrrr';
 import type { DataSource, DataSourceCapabilities, DataSourceOptions, ProviderCredentials } from '../../types';
 
-export type ProviderId = 'noaa' | 'usgs_nwis' | 'synoptic';
+export type ProviderId = 'noaa' | 'usgs_nwis' | 'synoptic' | 'hrrr';
 
 export interface ProviderDefinition {
     id: ProviderId;
@@ -56,6 +57,13 @@ const providers: Record<ProviderId, ProviderDefinition> = {
             placeholder: 'Paste Synoptic Token',
             signupUrl: 'https://developers.synopticdata.com/'
         }
+    },
+    hrrr: {
+        id: 'hrrr',
+        name: 'NOAA HRRR',
+        description: 'High-Resolution Rapid Refresh (HRRR) model grids',
+        capabilities: HRRR_CAPABILITIES,
+        create: (_options) => new HrrrService()
     }
 };
 

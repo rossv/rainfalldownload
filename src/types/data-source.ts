@@ -25,9 +25,18 @@ export interface DataSourceOptions {
     credentials?: ProviderCredentials;
 }
 
+export type HrrrProductType = 'analysis' | 'forecast';
+
+export interface HrrrQueryOptions {
+    productType: HrrrProductType;
+    forecastHour: number;
+    aggregationWindowHours: number;
+}
+
 export interface DataQueryOptions {
     datasetId?: string;
     datatypes?: string[];
+    hrrrOptions?: HrrrQueryOptions;
 }
 
 export interface DataSource {
