@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 
 import { StationMap } from '../components/StationMap';
 import { StationList } from '../components/StationList';
@@ -14,6 +14,7 @@ import { StatusCenter } from '../components/StatusCenter';
 import { cn } from '../lib/utils';
 import { usePreferences } from '../hooks/usePreferences';
 import { NOAA_DATATYPE_WHITELIST, NOAA_DATASET_WHITELIST } from '../services/noaa';
+import { DEFAULT_HRRR_PARAMETER, HRRR_PARAMETER_OPTIONS } from '../services/providers/hrrr-params';
 
 export function Dashboard() {
     const { preferences, setUnits, setProvider } = usePreferences();
@@ -32,7 +33,7 @@ export function Dashboard() {
     const [lastSearchCoords, setLastSearchCoords] = useState<[number, number] | null>(null);
     const [coordinateInput, setCoordinateInput] = useState({ lat: '', lon: '' });
     const [coordinateError, setCoordinateError] = useState<string | null>(null);
-    const [virtualStation, setVirtualStation] = useState<Station | null>(null);
+    const [, setVirtualStation] = useState<Station | null>(null);
 
     // View Mode: 'discovery' (Map focused) vs 'configuration' (Params focused)
     const [viewMode, setViewMode] = useState<'discovery' | 'configuration'>('discovery');
@@ -68,6 +69,8 @@ export function Dashboard() {
                 return 'USGS_NWIS';
             case 'synoptic':
                 return 'SYNOPTIC';
+            case 'hrrr':
+                return 'HRRR';
             default:
                 return 'NOAA_MRMS';
         }
@@ -118,6 +121,9 @@ export function Dashboard() {
     const [statusTasks, setStatusTasks] = useState<{ id: string, message: string, status: 'pending' | 'success' | 'error' }[]>([]);
     const [selectedDataTypes, setSelectedDataTypes] = useState<string[]>(['PRCP']);
     const [datasetId, setDatasetId] = useState<string>(NOAA_DATASET_WHITELIST[0]);
+    const [hrrrProductType, setHrrrProductType] = useState<'analysis' | 'forecast'>('forecast');
+    const [hrrrAggregationWindow, setHrrrAggregationWindow] = useState<'hourly' | '3-hour' | '6-hour'>('hourly');
+    const [hrrrLeadPreset, setHrrrLeadPreset] = useState<'0-18' | '0-48'>('0-18');
 
     // Track the parameters used for the last successful fetch to determine "staleness"
     const [lastFetchedParams, setLastFetchedParams] = useState<{
@@ -125,6 +131,12 @@ export function Dashboard() {
         dateRange: { start: string; end: string };
         dataTypes: string[];
         datasetId: string;
+        providerId: string;
+        hrrrOptions?: {
+            productType: 'analysis' | 'forecast';
+            aggregationWindow: 'hourly' | '3-hour' | '6-hour';
+            leadHours: number[];
+        };
         timestamp: number;
     } | null>(null);
 
@@ -150,9 +162,15 @@ export function Dashboard() {
         return [];
     }, [preferences.providerId]);
 
+    const hrrrLeadHours = useMemo(() => {
+        const maxHour = hrrrLeadPreset === '0-48' ? 48 : 18;
+        return Array.from({ length: maxHour + 1 }, (_, idx) => idx);
+    }, [hrrrLeadPreset]);
 
-    // Auto-select defaults when dataset changes
+
+    // Auto-select defaults when dataset changes (NOAA only)
     useEffect(() => {
+        if (preferences.providerId !== 'noaa') return;
         // Clear selected stations to prevent mixing datasets
         setSelectedStations([]);
 
@@ -165,7 +183,34 @@ export function Dashboard() {
                 return ['PRCP'];
             });
         }
-    }, [datasetId]);
+    }, [datasetId, preferences.providerId]);
+
+    useEffect(() => {
+        if (preferences.providerId === 'hrrr') {
+            const valid = selectedDataTypes.filter(dt => HRRR_PARAMETER_OPTIONS.some(option => option.id === dt));
+            const next = valid.length > 0 ? valid : [DEFAULT_HRRR_PARAMETER];
+            if (JSON.stringify(next) !== JSON.stringify(selectedDataTypes)) {
+                setSelectedDataTypes(next);
+            }
+        } else if (preferences.providerId === 'noaa') {
+            const filtered = selectedDataTypes.filter(dt => NOAA_DATATYPE_WHITELIST.includes(dt as typeof NOAA_DATATYPE_WHITELIST[number]));
+            const next = filtered.length > 0 ? filtered : ['PRCP'];
+            if (JSON.stringify(next) !== JSON.stringify(selectedDataTypes)) {
+                setSelectedDataTypes(next);
+            }
+        }
+    }, [preferences.providerId, selectedDataTypes]);
+
+    useEffect(() => {
+        if (preferences.providerId !== 'hrrr') return;
+        const today = new Date();
+        const start = new Date(today);
+        start.setUTCDate(start.getUTCDate() - 1);
+        setDateRange({
+            start: start.toISOString().split('T')[0],
+            end: today.toISOString().split('T')[0]
+        });
+    }, [preferences.providerId]);
 
     useEffect(() => {
         setCoordinateError(null);
@@ -459,13 +504,25 @@ export function Dashboard() {
 
         const fetchStationData = async (station: Station) => {
             try {
+                const hrrrOptions = preferences.providerId === 'hrrr'
+                    ? {
+                        latitude: station.latitude,
+                        longitude: station.longitude,
+                        productType: hrrrProductType,
+                        leadHours: hrrrLeadHours,
+                        aggregationWindow: hrrrAggregationWindow,
+                        parameters: selectedDataTypes
+                    }
+                    : undefined;
+
                 const data = await dataSource.fetchData({
                     stationIds: [station.id],
                     startDate: dateRange.start,
                     endDate: dateRange.end,
                     units: preferences.units,
                     datatypes: selectedDataTypes,
-                    datasetId
+                    ...(preferences.providerId === 'noaa' ? { datasetId } : {}),
+                    ...(hrrrOptions ? { hrrr: hrrrOptions } : {})
                 });
                 return { success: true, station, data };
             } catch (error: any) {
@@ -503,6 +560,14 @@ export function Dashboard() {
                 dateRange: { ...dateRange },
                 dataTypes: [...selectedDataTypes].sort(),
                 datasetId,
+                providerId: preferences.providerId,
+                hrrrOptions: preferences.providerId === 'hrrr'
+                    ? {
+                        productType: hrrrProductType,
+                        aggregationWindow: hrrrAggregationWindow,
+                        leadHours: hrrrLeadHours
+                    }
+                    : undefined,
                 timestamp: Date.now()
             });
 
@@ -524,6 +589,14 @@ export function Dashboard() {
                     dateRange: { ...dateRange },
                     dataTypes: [...selectedDataTypes].sort(),
                     datasetId,
+                    providerId: preferences.providerId,
+                    hrrrOptions: preferences.providerId === 'hrrr'
+                        ? {
+                            productType: hrrrProductType,
+                            aggregationWindow: hrrrAggregationWindow,
+                            leadHours: hrrrLeadHours
+                        }
+                        : undefined,
                     timestamp: Date.now()
                 });
             }
@@ -552,9 +625,15 @@ export function Dashboard() {
     };
 
     const toggleDataType = (typeId: string) => {
+        const fallbackType = preferences.providerId === 'hrrr'
+            ? DEFAULT_HRRR_PARAMETER
+            : datasetId === 'PRECIP_HLY'
+                ? 'HPCP'
+                : 'PRCP';
+
         setSelectedDataTypes(prev =>
             prev.includes(typeId)
-                ? (prev.filter(t => t !== typeId).length > 0 ? prev.filter(t => t !== typeId) : ['PRCP'])
+                ? (prev.filter(t => t !== typeId).length > 0 ? prev.filter(t => t !== typeId) : [fallbackType])
                 : [...new Set([...prev, typeId])]
         );
     };
@@ -569,13 +648,20 @@ export function Dashboard() {
         const dateChanged = dateRange.start !== lastFetchedParams.dateRange.start ||
             dateRange.end !== lastFetchedParams.dateRange.end;
         const typesChanged = JSON.stringify([...selectedDataTypes].sort()) !== JSON.stringify(lastFetchedParams.dataTypes);
-        const datasetChanged = datasetId !== lastFetchedParams.datasetId;
+        const datasetChanged = preferences.providerId === 'noaa' && datasetId !== lastFetchedParams.datasetId;
+        const providerChanged = preferences.providerId !== lastFetchedParams.providerId;
+        const hrrrOptionsChanged = preferences.providerId === 'hrrr' && JSON.stringify({
+            productType: hrrrProductType,
+            aggregationWindow: hrrrAggregationWindow,
+            leadHours: hrrrLeadHours
+        }) !== JSON.stringify(lastFetchedParams.hrrrOptions);
 
-        if (stationsChanged || dateChanged || typesChanged || datasetChanged) {
+        if (stationsChanged || dateChanged || typesChanged || datasetChanged || providerChanged || hrrrOptionsChanged) {
             return 'stale';
         }
         return 'fresh';
-    }, [rainfallData, lastFetchedParams, selectedStations, dateRange, selectedDataTypes, datasetId]);
+    }, [rainfallData, lastFetchedParams, selectedStations, dateRange, selectedDataTypes, datasetId, preferences.providerId, hrrrAggregationWindow, hrrrLeadHours, hrrrProductType]);
+
 
     const dateConstraints = useMemo(() => {
         if (selectedStations.length === 0) return { min: undefined, max: undefined };
@@ -604,6 +690,53 @@ export function Dashboard() {
             max: maxDate.toISOString().split('T')[0]
         };
     }, [selectedStations, stationAvailability]);
+
+    const clampDateRange = useCallback((range: { start: string; end: string }) => {
+        const maxDays = providerCapabilities?.maxDateRangeDays;
+        const startDate = new Date(range.start);
+        const endDate = new Date(range.end);
+        if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return range;
+
+        let clampedStart = startDate;
+        let clampedEnd = endDate;
+
+        if (dateConstraints.min) {
+            const minDate = new Date(dateConstraints.min);
+            if (clampedStart < minDate) clampedStart = minDate;
+            if (clampedEnd < minDate) clampedEnd = minDate;
+        }
+        if (dateConstraints.max) {
+            const maxDate = new Date(dateConstraints.max);
+            if (clampedStart > maxDate) clampedStart = maxDate;
+            if (clampedEnd > maxDate) clampedEnd = maxDate;
+        }
+
+        if (clampedStart > clampedEnd) {
+            clampedEnd = clampedStart;
+        }
+
+        if (maxDays) {
+            const maxEnd = new Date(clampedStart);
+            maxEnd.setUTCDate(maxEnd.getUTCDate() + maxDays);
+            if (clampedEnd > maxEnd) clampedEnd = maxEnd;
+
+            const minStart = new Date(clampedEnd);
+            minStart.setUTCDate(minStart.getUTCDate() - maxDays);
+            if (clampedStart < minStart) clampedStart = minStart;
+        }
+
+        return {
+            start: clampedStart.toISOString().split('T')[0],
+            end: clampedEnd.toISOString().split('T')[0]
+        };
+    }, [dateConstraints.max, dateConstraints.min, providerCapabilities?.maxDateRangeDays]);
+
+    useEffect(() => {
+        const clamped = clampDateRange(dateRange);
+        if (clamped.start !== dateRange.start || clamped.end !== dateRange.end) {
+            setDateRange(clamped);
+        }
+    }, [clampDateRange, dateRange]);
 
     const hasData = rainfallData.length > 0;
 
@@ -670,7 +803,7 @@ export function Dashboard() {
                                 disableTextSearch={isPointSelectionMode}
                                 datasetId={datasetId}
                                 onDatasetChange={setDatasetId}
-                                datasetOptions={datasetOptions}
+                                datasetOptions={datasetOptions.length > 0 ? datasetOptions : undefined}
                                 providerId={preferences.providerId}
                                 onProviderChange={(val) => setProvider(val as any)}
                                 providerOptions={listProviders()}
@@ -755,9 +888,63 @@ export function Dashboard() {
 
                             <div className="space-y-6">
                                 <div className="space-y-4">
-
-
-
+                                    {preferences.providerId === 'hrrr' && (
+                                        <div className="space-y-4 rounded-lg border border-border/60 bg-muted/10 p-4">
+                                            <div>
+                                                <label className="text-sm font-medium mb-1 block">HRRR Product</label>
+                                                <select
+                                                    value={hrrrProductType}
+                                                    onChange={e => setHrrrProductType(e.target.value as 'analysis' | 'forecast')}
+                                                    className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                                                >
+                                                    <option value="analysis">Analysis (recent hours)</option>
+                                                    <option value="forecast">Forecast (future hours)</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium mb-1 block">Forecast Lead Hours</label>
+                                                <select
+                                                    value={hrrrLeadPreset}
+                                                    onChange={e => setHrrrLeadPreset(e.target.value as '0-18' | '0-48')}
+                                                    className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                                                >
+                                                    <option value="0-18">0–18 hours (standard HRRR)</option>
+                                                    <option value="0-48">0–48 hours (extended)</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium mb-1 block">Aggregation Window</label>
+                                                <select
+                                                    value={hrrrAggregationWindow}
+                                                    onChange={e => setHrrrAggregationWindow(e.target.value as 'hourly' | '3-hour' | '6-hour')}
+                                                    className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                                                >
+                                                    <option value="hourly">Hourly</option>
+                                                    <option value="3-hour">3-hour</option>
+                                                    <option value="6-hour">6-hour</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium mb-2 block">HRRR Parameters</label>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {HRRR_PARAMETER_OPTIONS.map(option => (
+                                                        <label key={option.id} className="flex items-start gap-2 text-xs text-muted-foreground">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedDataTypes.includes(option.id)}
+                                                                onChange={() => toggleDataType(option.id)}
+                                                                className="mt-0.5"
+                                                            />
+                                                            <span>
+                                                                <span className="text-foreground font-medium">{option.label}</span>
+                                                                <span className="ml-1 text-[11px] text-muted-foreground">({option.units})</span>
+                                                            </span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Selected Stations (Merged into Timeline) */}
@@ -772,7 +959,7 @@ export function Dashboard() {
                                                 value={dateRange.start}
                                                 min={dateConstraints.min}
                                                 max={dateConstraints.max}
-                                                onChange={e => setDateRange(p => ({ ...p, start: e.target.value }))}
+                                                onChange={e => setDateRange(p => clampDateRange({ ...p, start: e.target.value }))}
                                                 className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
                                             />
                                             <input
@@ -780,13 +967,18 @@ export function Dashboard() {
                                                 value={dateRange.end}
                                                 min={dateConstraints.min}
                                                 max={dateConstraints.max}
-                                                onChange={e => setDateRange(p => ({ ...p, end: e.target.value }))}
+                                                onChange={e => setDateRange(p => clampDateRange({ ...p, end: e.target.value }))}
                                                 className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
                                             />
                                         </div>
                                         {dateConstraints.min && (
                                             <p className="text-xs text-muted-foreground mt-1">
                                                 Available: {dateConstraints.min} to {dateConstraints.max}
+                                            </p>
+                                        )}
+                                        {preferences.providerId === 'hrrr' && (
+                                            <p className="text-xs text-amber-600 mt-1">
+                                                HRRR is a short-range gridded model (~48-hour rolling archive, ~18-hour forecast). Date ranges are limited to {providerCapabilities?.maxDateRangeDays ?? 2} days.
                                             </p>
                                         )}
                                     </div>
@@ -800,7 +992,7 @@ export function Dashboard() {
                                                 loading={availabilityLoading}
                                                 selectedStart={dateRange.start}
                                                 selectedEnd={dateRange.end}
-                                                onRangeChange={(start, end) => setDateRange({ start, end })}
+                                                onRangeChange={(start, end) => setDateRange(clampDateRange({ start, end }))}
                                                 onRemoveStation={(station) => toggleStation(station)}
                                                 onDownloadCSV={handleDownloadSingleCSV}
                                                 onDownloadSWMM={handleDownloadSingleSWMM}

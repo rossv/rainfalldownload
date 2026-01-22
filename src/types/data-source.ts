@@ -11,6 +11,15 @@ export interface DataSourceCapabilities {
     maxDateRangeDays?: number;
 }
 
+export interface HrrrQueryOptions {
+    latitude?: number;
+    longitude?: number;
+    productType?: 'analysis' | 'forecast';
+    leadHours?: number[];
+    aggregationWindow?: 'hourly' | '3-hour' | '6-hour';
+    parameters?: string[];
+}
+
 export interface ProviderCredentials {
     /**
      * Primary token or API key used to authenticate with the provider.
@@ -28,6 +37,7 @@ export interface DataSourceOptions {
 export interface DataQueryOptions {
     datasetId?: string;
     datatypes?: string[];
+    hrrr?: HrrrQueryOptions;
 }
 
 export interface DataSource {

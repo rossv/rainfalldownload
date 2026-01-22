@@ -80,6 +80,7 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                                     <h3 className="text-foreground font-semibold">Supported & upcoming providers</h3>
                                     <ul className="list-disc ml-5 space-y-1">
                                         <li><strong>NOAA CDO (live):</strong> Station-based daily/hourly precipitation; ~24 h latency; requires a free CDO token.</li>
+                                        <li><strong>NOAA HRRR (beta):</strong> Gridded rapid-refresh model; hourly updates; rolling ~48-hour archive with ~18-hour forecast horizon.</li>
                                         <li><strong>NASA GPM IMERG (roadmap):</strong> 0.1° gridded, 30-min/daily; ~12–24 h latency; requires Earthdata Login token.</li>
                                         <li><strong>Meteostat (roadmap):</strong> Station hourly/daily; ~1–3 h latency; no token; best coverage in Europe/NA.</li>
                                         <li><strong>OpenWeatherMap (roadmap):</strong> Point current/forecast hourly precip; minute-level latency; free API key; daily archives limited.</li>
