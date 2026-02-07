@@ -39,6 +39,7 @@ export function Dashboard() {
     const [viewMode, setViewMode] = useState<'discovery' | 'configuration'>('discovery');
 
     const activeCredentials = preferences.credentials[preferences.providerId];
+    const hasApiKey = Boolean(activeCredentials?.token?.trim() || activeCredentials?.apiKey?.trim());
 
     const dataSource = useMemo<DataSource | null>(
         () => createProvider(preferences.providerId, {
@@ -341,8 +342,6 @@ export function Dashboard() {
 
     const handleLocationClick = () => {
         const caps = providerCapabilities;
-        const creds = activeCredentials;
-        const hasKey = Boolean(creds?.token?.trim() || creds?.apiKey?.trim());
 
         if (!caps?.supportsStationSearch) {
             if (caps?.supportsSpatialSearch) {
@@ -369,7 +368,7 @@ export function Dashboard() {
             alert('The selected provider does not support station search.');
             return;
         }
-        if (!hasKey && caps?.requiresApiKey) {
+        if (!hasApiKey && caps?.requiresApiKey) {
             alert('Add your API Token in Settings before searching.');
             return;
         }
@@ -789,7 +788,7 @@ export function Dashboard() {
                                 onLocationSearch={handleLocationClick}
                                 loading={searchLoading}
                                 disabled={searchLoading || !dataSource}
-                                showTokenWarning={!activeCredentials?.token && providerCapabilities?.requiresApiKey === true}
+                                showTokenWarning={!hasApiKey && providerCapabilities?.requiresApiKey === true}
                                 showCoordinateInput={isPointSelectionMode}
                                 coordinateLat={coordinateInput.lat}
                                 coordinateLon={coordinateInput.lon}
