@@ -89,7 +89,7 @@ Use this quick guide to pick the right source for your scenario:
 
 ## Deployment
 - Build the production bundle with `npm run build`; preview locally with `npm run preview`.
-- The Vite config sets `base: '/rainfallldownload/'` for GitHub Pages. If you deploy under a different path, update `base` in `vite.config.ts` to match your hosting URL.
+- The Vite config sets `base: '/rainfalldownload/'` for GitHub Pages. If you deploy under a different path, update `base` in `vite.config.ts` to match your hosting URL.
 - All NOAA requests occur client-side; ensure your deployment domain is allowed to call the CDO API and remind users to supply their own tokens.
 
 ## HRRR proxy setup
