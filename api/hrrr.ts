@@ -13,6 +13,7 @@ type HrrrResponse = {
 };
 
 const DEFAULT_USER_AGENT = 'rainfall-downloader/2.0 (hrrr-proxy)';
+const FETCH_TIMEOUT_MS = 10000;
 
 const parseNumberList = (value: string | undefined): number[] => {
     if (!value) return [];
@@ -112,6 +113,16 @@ const sendJson = (res: any, status: number, payload: unknown) => {
     });
 };
 
+const fetchWithTimeout = async (url: string, init: RequestInit) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+        return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
 export default async function handler(req: any, res?: any) {
     const method = req?.method ?? 'GET';
     if (method !== 'GET') {
@@ -140,6 +151,9 @@ export default async function handler(req: any, res?: any) {
     if (endDate && Number.isNaN(endDate.getTime())) {
         return sendJson(res, 400, { error: 'Invalid end date.' });
     }
+    if (startDate && endDate && endDate < startDate) {
+        return sendJson(res, 400, { error: 'End date must be after start date.' });
+    }
 
     const userAgent = process.env.HRRR_USER_AGENT ?? DEFAULT_USER_AGENT;
     const parameterOptions = new Map(HRRR_PARAMETER_OPTIONS.map(option => [option.id, option]));
@@ -151,9 +165,14 @@ export default async function handler(req: any, res?: any) {
         return sendJson(res, 400, { error: 'No supported parameters requested.' });
     }
 
-    const pointResponse = await fetch(`https://api.weather.gov/points/${lat},${lon}`, {
-        headers: { 'User-Agent': userAgent }
-    });
+    let pointResponse: Response;
+    try {
+        pointResponse = await fetchWithTimeout(`https://api.weather.gov/points/${lat},${lon}`, {
+            headers: { 'User-Agent': userAgent }
+        });
+    } catch {
+        return sendJson(res, 502, { error: 'Failed to reach NOAA points endpoint.' });
+    }
 
     if (!pointResponse.ok) {
         return sendJson(res, pointResponse.status, { error: 'Failed to resolve grid point.' });
@@ -168,9 +187,14 @@ export default async function handler(req: any, res?: any) {
         return sendJson(res, 500, { error: 'Grid metadata unavailable from NOAA.' });
     }
 
-    const gridResponse = await fetch(`https://api.weather.gov/gridpoints/${gridId}/${gridX},${gridY}`, {
-        headers: { 'User-Agent': userAgent }
-    });
+    let gridResponse: Response;
+    try {
+        gridResponse = await fetchWithTimeout(`https://api.weather.gov/gridpoints/${gridId}/${gridX},${gridY}`, {
+            headers: { 'User-Agent': userAgent }
+        });
+    } catch {
+        return sendJson(res, 502, { error: 'Failed to reach NOAA grid endpoint.' });
+    }
 
     if (!gridResponse.ok) {
         return sendJson(res, gridResponse.status, { error: 'Failed to fetch HRRR grid data.' });

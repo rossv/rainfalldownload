@@ -1,6 +1,6 @@
 
-import axios from 'axios';
 import type { DataSource, DataSourceCapabilities, UnifiedTimeSeries, Station, DataType } from '../../types';
+import { formatAxiosError, getJsonWithRetry } from '../http';
 
 export const SYNOPTIC_CAPABILITIES: DataSourceCapabilities = {
     id: 'synoptic',
@@ -28,15 +28,17 @@ export class SynopticService implements DataSource {
 
     async findStations(query: string): Promise<Station[]> {
         if (query.length < 3) return [];
+        if (!this.token) return [];
 
-        const url = `https://api.synopticdata.com/v2/stations/metadata?token=${this.token}&stid=${query}`;
         try {
-            const res = await axios.get(url);
-            if (res.data?.STATION) {
-                return res.data.STATION.map((s: any) => this.mapStation(s));
+            const data = await getJsonWithRetry<any>('https://api.synopticdata.com/v2/stations/metadata', {
+                params: { token: this.token, stid: query }
+            });
+            if (data?.STATION) {
+                return data.STATION.map((s: any) => this.mapStation(s));
             }
         } catch (e) {
-            // ignore
+            console.warn(formatAxiosError(e, 'Synoptic station lookup failed'));
         }
         return [];
     }
@@ -48,17 +50,23 @@ export class SynopticService implements DataSource {
     }
 
     async findStationsByCoords(lat: number, lon: number, radiusKm: number = 25): Promise<Station[]> {
+        if (!this.token) return [];
         const miles = radiusKm * 0.621371;
-        const url = `https://api.synopticdata.com/v2/stations/metadata?token=${this.token}&radius=${lat},${lon},${miles}&limit=100`;
 
         try {
-            const res = await axios.get(url);
-            if (res.data?.STATION) {
-                return res.data.STATION.map((s: any) => this.mapStation(s));
+            const data = await getJsonWithRetry<any>('https://api.synopticdata.com/v2/stations/metadata', {
+                params: {
+                    token: this.token,
+                    radius: `${lat},${lon},${miles}`,
+                    limit: 100
+                }
+            });
+            if (data?.STATION) {
+                return data.STATION.map((s: any) => this.mapStation(s));
             }
             return [];
         } catch (e) {
-            console.error("Synoptic Search Error", e);
+            console.warn(formatAxiosError(e, 'Synoptic search failed'));
             return [];
         }
     }
@@ -81,10 +89,16 @@ export class SynopticService implements DataSource {
     }
 
     async getAvailableDataTypes(stationId: string): Promise<DataType[]> {
-        const url = `https://api.synopticdata.com/v2/stations/metadata?token=${this.token}&stid=${stationId}&complete=1`;
+        if (!this.token) return [];
         try {
-            const res = await axios.get(url);
-            const st = res.data?.STATION?.[0];
+            const data = await getJsonWithRetry<any>('https://api.synopticdata.com/v2/stations/metadata', {
+                params: {
+                    token: this.token,
+                    stid: stationId,
+                    complete: 1
+                }
+            });
+            const st = data?.STATION?.[0];
             if (st && st.SENSOR_VARIABLES) {
                 const types: DataType[] = [];
                 Object.keys(st.SENSOR_VARIABLES).forEach(key => {
@@ -102,12 +116,15 @@ export class SynopticService implements DataSource {
                 return types;
             }
         } catch (e) {
-            // fallback
+            console.warn(formatAxiosError(e, 'Synoptic datatype lookup failed'));
         }
         return [];
     }
 
     async fetchData(options: any): Promise<UnifiedTimeSeries[]> {
+        if (!this.token) {
+            throw new Error('Synoptic API token is required.');
+        }
         const { stationIds, startDate, endDate, datatypes } = options;
         const stid = stationIds.join(',');
 
@@ -116,14 +133,20 @@ export class SynopticService implements DataSource {
 
         const vars = datatypes && datatypes.length > 0 ? datatypes.join(',') : 'precip_accum,air_temp';
 
-        const url = `https://api.synopticdata.com/v2/stations/timeseries?token=${this.token}&stid=${stid}&start=${start}&end=${end}&vars=${vars}`;
-
         try {
-            const res = await axios.get(url);
+            const data = await getJsonWithRetry<any>('https://api.synopticdata.com/v2/stations/timeseries', {
+                params: {
+                    token: this.token,
+                    stid,
+                    start,
+                    end,
+                    vars
+                }
+            }, { retries: 3 });
             const results: UnifiedTimeSeries[] = [];
 
-            if (res.data?.STATION) {
-                res.data.STATION.forEach((st: any) => {
+            if (data?.STATION) {
+                data.STATION.forEach((st: any) => {
                     const observations = st.OBSERVATIONS;
                     if (!observations) return;
 
@@ -155,8 +178,8 @@ export class SynopticService implements DataSource {
             }
             return results;
         } catch (e) {
-            console.error("Synoptic Fetch Failed", e);
-            throw e;
+            console.warn(formatAxiosError(e, 'Synoptic fetch failed'));
+            throw new Error('Synoptic fetch failed. Please check your token and try again.');
         }
     }
 }
