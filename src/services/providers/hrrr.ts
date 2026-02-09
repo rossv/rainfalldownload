@@ -1,5 +1,5 @@
-import axios from 'axios';
 import type { DataQueryOptions, DataSource, DataSourceCapabilities, DataType, FetchDataParams, Station, UnifiedTimeSeries } from '../../types';
+import { formatAxiosError, getJsonWithRetry } from '../http';
 import { DEFAULT_HRRR_PARAMETER, HRRR_PARAMETER_OPTIONS } from './hrrr-params';
 
 export const HRRR_CAPABILITIES: DataSourceCapabilities = {
@@ -61,20 +61,29 @@ export class HrrrService implements DataSource {
         const parameters = requested.filter(param => parameterOptions.has(param));
         const finalParameters = parameters.length > 0 ? parameters : [DEFAULT_HRRR_PARAMETER];
 
-        const response = await axios.get('/api/hrrr', {
-            params: {
-                lat: latitude,
-                lon: longitude,
-                start: params.startDate,
-                end: params.endDate,
-                parameters: finalParameters.join(','),
-                productType: hrrrOptions.productType ?? 'forecast',
-                leadHours: hrrrOptions.leadHours?.join(','),
-                aggregationWindow: hrrrOptions.aggregationWindow ?? 'hourly'
-            }
-        });
+        let payload: {
+            stationId?: string;
+            series: Array<{ timestamp: string; value: number; interval: number; parameter: string }>;
+        };
+        try {
+            payload = await getJsonWithRetry('/api/hrrr', {
+                params: {
+                    lat: latitude,
+                    lon: longitude,
+                    start: params.startDate,
+                    end: params.endDate,
+                    parameters: finalParameters.join(','),
+                    productType: hrrrOptions.productType ?? 'forecast',
+                    leadHours: hrrrOptions.leadHours?.join(','),
+                    aggregationWindow: hrrrOptions.aggregationWindow ?? 'hourly'
+                }
+            }, { retries: 2 });
+        } catch (error) {
+            console.warn(formatAxiosError(error, 'HRRR request failed'));
+            throw new Error('HRRR request failed. Please try again.');
+        }
 
-        const { series, stationId: apiStationId } = response.data as {
+        const { series, stationId: apiStationId } = payload as {
             stationId?: string;
             series: Array<{ timestamp: string; value: number; interval: number; parameter: string }>;
         };
