@@ -1,5 +1,5 @@
 
-import { DataSource, DataSourceCapabilities, UnifiedTimeSeries, Station, DataType } from '../../types';
+import type { DataSource, DataSourceCapabilities, UnifiedTimeSeries, Station, DataType } from '../../types';
 
 export const MRMS_CAPABILITIES: DataSourceCapabilities = {
     id: 'noaa_mrms',

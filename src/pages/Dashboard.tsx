@@ -1038,7 +1038,7 @@ export function Dashboard() {
                         </div>
 
                         <div className={cn(
-                            "p-5 bg-card border-t border-border z-10 shrink-0 flex items-center gap-3 transition-opacity",
+                            "p-5 bg-card border-t border-border z-10 shrink-0 flex items-stretch gap-3 transition-opacity",
                             viewMode === 'discovery' ? "opacity-40 pointer-events-none" : "opacity-100"
                         )}>
                             <button

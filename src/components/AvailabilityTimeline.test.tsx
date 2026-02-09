@@ -7,6 +7,7 @@ import type { DataType, Station } from '../types';
 describe('AvailabilityTimeline', () => {
     const station: Station = {
         id: 'STN1',
+        source: 'NOAA_CDO',
         name: 'Single Day Station',
         latitude: 0,
         longitude: 0
@@ -28,7 +29,7 @@ describe('AvailabilityTimeline', () => {
                 stations={[station]}
                 availability={{ [station.id]: [dataType] }}
                 loading={{}}
-                onRemoveStation={() => {}}
+                onRemoveStation={() => { }}
             />
         );
 

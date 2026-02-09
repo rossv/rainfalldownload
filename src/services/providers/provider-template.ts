@@ -1,9 +1,10 @@
-import type { DataQueryOptions, DataSource, DataSourceCapabilities, FetchDataParams, UnifiedTimeSeries, Station, DataType } from '../../types';
+import type { DataQueryOptions, DataSource, DataSourceCapabilities, FetchDataParams, Station, DataType } from '../../types';
 
 const TEMPLATE_CAPABILITIES: DataSourceCapabilities = {
     id: 'provider-id',
     name: 'Provider Name',
     supportsStationSearch: true,
+    supportsSpatialSearch: false,
     supportsGridInterpolation: false,
     requiresApiKey: false,
     description: 'Short description of the upstream API or dataset'

@@ -20,6 +20,7 @@ vi.mock('recharts', async () => {
 describe('RainfallChart WESD Rendering', () => {
     const stations: Station[] = [{
         id: 'GHCND.USW00094846',
+        source: 'NOAA_CDO',
         name: 'Test Station',
         latitude: 0,
         longitude: 0
@@ -27,14 +28,22 @@ describe('RainfallChart WESD Rendering', () => {
 
     const wesdData: RainfallData[] = [
         {
-            date: '2023-01-01T00:00:00',
+            timestamp: '2023-01-01T00:00:00',
             value: 5.5,
+            interval: 1440,
+            source: 'NOAA_CDO',
+            parameter: 'WESD',
+            date: '2023-01-01T00:00:00',
             datatype: 'WESD',
             stationId: 'GHCND.USW00094846'
         },
         {
-            date: '2023-01-02T00:00:00',
+            timestamp: '2023-01-02T00:00:00',
             value: 10.0,
+            interval: 1440,
+            source: 'NOAA_CDO',
+            parameter: 'WESD',
+            date: '2023-01-02T00:00:00',
             datatype: 'WESD',
             stationId: 'GHCND.USW00094846'
         }

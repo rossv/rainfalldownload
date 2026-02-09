@@ -1,9 +1,12 @@
 import axios from 'axios';
 import type { Station, DataSource } from '../types';
+import { geocodeCity } from './geocoding';
 import type { DataQueryOptions, DataSourceCapabilities } from '../types/data-source';
 
 // NOAA-specific constants kept private to the provider implementation.
-const BASE_NOAA = 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
+const BASE_NOAA = import.meta.env.DEV
+    ? '/api/noaa'
+    : 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
 
 const CACHE_PREFIX = 'noaa_cache_v5_';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
@@ -130,7 +133,7 @@ export class NoaaService implements DataSource {
 
     async request<T>(endpoint: string, params: Record<string, any> = {}): Promise<T> {
         // Construct full URL with params for the target service
-        const url = new URL(`${BASE_NOAA}${endpoint}`);
+        const url = new URL(`${BASE_NOAA}${endpoint}`, window.location.origin);
 
         Object.keys(params).forEach(key => {
             const val = params[key];
@@ -196,7 +199,7 @@ export class NoaaService implements DataSource {
 
         try {
             console.log(`[RainfallDownloader] Geocoding city: ${city}`);
-            const coords = await import('./geocoding').then(m => m.geocodeCity(city));
+            const coords = await geocodeCity(city);
             if (!coords) return [];
             lat = coords.lat.toString();
             lon = coords.lon.toString();
@@ -222,9 +225,13 @@ export class NoaaService implements DataSource {
         // extent order: minLat, minLon, maxLat, maxLon
         const extent = `${lat - buffer},${lon - buffer},${lat + buffer},${lon + buffer}`;
 
+        // If no specific datatypes were requested, we don't filter by the default one
+        // to ensure we get maximum station coverage.
+        const shouldFilterDatatypes = options.datatypes && options.datatypes.length > 0;
+
         const data: any = await this.request('/stations', {
             datasetid: datasetId,
-            datatypeid: datatypes,
+            datatypeid: shouldFilterDatatypes ? datatypes : undefined,
             limit,
             extent
         });

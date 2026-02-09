@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
+const NOMINATIM_BASE = import.meta.env.DEV
+    ? '/api/nominatim'
+    : 'https://nominatim.openstreetmap.org/search';
 
 async function fetchWithRetry(url: string, options: any = {}, retries = 3): Promise<any> {
     let attempt = 0;
@@ -38,7 +40,7 @@ export async function geocodeCity(city: string): Promise<{ lat: number; lon: num
 
     // 2. Try Proxy
     try {
-        const targetUrl = new URL(NOMINATIM_BASE);
+        const targetUrl = new URL(NOMINATIM_BASE, window.location.origin);
         targetUrl.searchParams.append('q', city);
         targetUrl.searchParams.append('format', 'json');
         targetUrl.searchParams.append('limit', '1');
