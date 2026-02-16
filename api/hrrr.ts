@@ -1,4 +1,4 @@
-import { DEFAULT_HRRR_PARAMETER, HRRR_PARAMETER_OPTIONS, type HrrrParameterOption } from '../src/services/providers/hrrr-params';
+import { DEFAULT_HRRR_PARAMETER, HRRR_PARAMETER_OPTIONS } from '../src/services/providers/hrrr-params';
 
 type HrrrSeriesPoint = {
     timestamp: string;
@@ -13,7 +13,8 @@ type HrrrResponse = {
 };
 
 const DEFAULT_USER_AGENT = 'rainfall-downloader/2.0 (hrrr-proxy)';
-const FETCH_TIMEOUT_MS = 10000;
+const DEFAULT_SERVICE_URL = 'http://127.0.0.1:8000/hrrr';
+const FETCH_TIMEOUT_MS = 30000;
 
 const parseNumberList = (value: string | undefined): number[] => {
     if (!value) return [];
@@ -29,68 +30,6 @@ const parseStringList = (value: string | undefined): string[] => {
         .split(',')
         .map(item => item.trim())
         .filter(Boolean);
-};
-
-const addDaysUtc = (date: Date, days: number) => {
-    const next = new Date(date);
-    next.setUTCDate(next.getUTCDate() + days);
-    return next;
-};
-
-const parseDurationMinutes = (duration: string | undefined): number => {
-    if (!duration) return 60;
-    const match = duration.match(/P(?:\d+Y)?(?:\d+M)?(?:\d+D)?T?(?:(\d+)H)?(?:(\d+)M)?/);
-    if (!match) return 60;
-    const hours = match[1] ? Number(match[1]) : 0;
-    const minutes = match[2] ? Number(match[2]) : 0;
-    const total = hours * 60 + minutes;
-    return total > 0 ? total : 60;
-};
-
-const parseValidTime = (validTime: string) => {
-    const [start, duration] = validTime.split('/');
-    const timestamp = new Date(start);
-    const interval = parseDurationMinutes(duration);
-    return { timestamp, interval };
-};
-
-const buildStationId = (lat: number, lon: number) => {
-    const roundedLat = lat.toFixed(4);
-    const roundedLon = lon.toFixed(4);
-    return `hrrr-${roundedLat}-${roundedLon}`;
-};
-
-const aggregateSeries = (
-    series: Array<{ timestamp: Date; value: number; interval: number }>,
-    option: HrrrParameterOption,
-    windowHours: number
-): HrrrSeriesPoint[] => {
-    const windowMs = windowHours * 60 * 60 * 1000;
-    const buckets = new Map<number, Array<{ timestamp: Date; value: number; interval: number }>>();
-
-    series.forEach(point => {
-        const bucketKey = Math.floor(point.timestamp.getTime() / windowMs);
-        const existing = buckets.get(bucketKey) ?? [];
-        existing.push(point);
-        buckets.set(bucketKey, existing);
-    });
-
-    return Array.from(buckets.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(([bucketKey, points]) => {
-            const timestamp = new Date(bucketKey * windowMs);
-            const values = points.map(p => p.value);
-            const value = option.aggregation === 'sum'
-                ? values.reduce((sum, v) => sum + v, 0)
-                : values.reduce((sum, v) => sum + v, 0) / values.length;
-
-            return {
-                timestamp: timestamp.toISOString(),
-                value,
-                interval: windowHours * 60,
-                parameter: option.unifiedParameter
-            };
-        });
 };
 
 const getQueryValue = (req: any, key: string) => {
@@ -121,6 +60,16 @@ const fetchWithTimeout = async (url: string, init: RequestInit) => {
     } finally {
         clearTimeout(timeout);
     }
+};
+
+const toQueryString = (params: Record<string, string | number | undefined>) => {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+            search.set(key, String(value));
+        }
+    });
+    return search.toString();
 };
 
 export default async function handler(req: any, res?: any) {
@@ -155,7 +104,6 @@ export default async function handler(req: any, res?: any) {
         return sendJson(res, 400, { error: 'End date must be after start date.' });
     }
 
-    const userAgent = process.env.HRRR_USER_AGENT ?? DEFAULT_USER_AGENT;
     const parameterOptions = new Map(HRRR_PARAMETER_OPTIONS.map(option => [option.id, option]));
     const requestedParameters = parseStringList(parametersRaw);
     const parameters = (requestedParameters.length > 0 ? requestedParameters : [DEFAULT_HRRR_PARAMETER])
@@ -165,86 +113,51 @@ export default async function handler(req: any, res?: any) {
         return sendJson(res, 400, { error: 'No supported parameters requested.' });
     }
 
-    let pointResponse: Response;
-    try {
-        pointResponse = await fetchWithTimeout(`https://api.weather.gov/points/${lat},${lon}`, {
-            headers: { 'User-Agent': userAgent }
-        });
-    } catch {
-        return sendJson(res, 502, { error: 'Failed to reach NOAA points endpoint.' });
-    }
-
-    if (!pointResponse.ok) {
-        return sendJson(res, pointResponse.status, { error: 'Failed to resolve grid point.' });
-    }
-
-    const pointData = await pointResponse.json();
-    const gridId = pointData?.properties?.gridId;
-    const gridX = pointData?.properties?.gridX;
-    const gridY = pointData?.properties?.gridY;
-
-    if (!gridId || gridX === undefined || gridY === undefined) {
-        return sendJson(res, 500, { error: 'Grid metadata unavailable from NOAA.' });
-    }
-
-    let gridResponse: Response;
-    try {
-        gridResponse = await fetchWithTimeout(`https://api.weather.gov/gridpoints/${gridId}/${gridX},${gridY}`, {
-            headers: { 'User-Agent': userAgent }
-        });
-    } catch {
-        return sendJson(res, 502, { error: 'Failed to reach NOAA grid endpoint.' });
-    }
-
-    if (!gridResponse.ok) {
-        return sendJson(res, gridResponse.status, { error: 'Failed to fetch HRRR grid data.' });
-    }
-
-    const gridData = await gridResponse.json();
-    const properties = gridData?.properties ?? {};
-    const now = new Date();
-    const windowHours = aggregationWindow === '6-hour' ? 6 : aggregationWindow === '3-hour' ? 3 : 1;
-
-    const series = parameters.flatMap(parameterId => {
-        const option = parameterOptions.get(parameterId);
-        if (!option) return [];
-
-        const values = properties?.[option.sourceField]?.values ?? [];
-        const points = values
-            .map((entry: { validTime: string; value: number | null }) => {
-                if (entry.value === null || entry.value === undefined) return null;
-                const { timestamp, interval } = parseValidTime(entry.validTime);
-                return { timestamp, interval, value: entry.value };
-            })
-            .filter((entry: { timestamp: Date; interval: number; value: number } | null) => {
-                if (!entry) return false;
-                if (startDate && entry.timestamp < startDate) return false;
-                if (endDate && entry.timestamp > addDaysUtc(endDate, 1)) return false;
-                if (productType === 'analysis' && entry.timestamp > now) return false;
-                if (productType === 'forecast' && entry.timestamp < now) return false;
-                if (leadHours.length > 0) {
-                    const lead = Math.round((entry.timestamp.getTime() - now.getTime()) / (60 * 60 * 1000));
-                    if (!leadHours.includes(lead)) return false;
-                }
-                return true;
-            }) as Array<{ timestamp: Date; interval: number; value: number }>;
-
-        if (windowHours === 1) {
-            return points.map(point => ({
-                timestamp: point.timestamp.toISOString(),
-                value: point.value,
-                interval: point.interval,
-                parameter: option.unifiedParameter
-            }));
-        }
-
-        return aggregateSeries(points, option, windowHours);
+    const userAgent = process.env.HRRR_USER_AGENT ?? DEFAULT_USER_AGENT;
+    const serviceUrl = process.env.HRRR_SERVICE_URL ?? DEFAULT_SERVICE_URL;
+    const requestQuery = toQueryString({
+        lat,
+        lon,
+        start,
+        end,
+        parameters: parameters.join(','),
+        productType,
+        aggregationWindow,
+        leadHours: leadHours.length > 0 ? leadHours.join(',') : undefined
     });
 
-    const response: HrrrResponse = {
-        stationId: buildStationId(lat, lon),
-        series
-    };
+    let serviceResponse: Response;
+    try {
+        serviceResponse = await fetchWithTimeout(`${serviceUrl}?${requestQuery}`, {
+            headers: {
+                'Accept': 'application/json',
+                'X-HRRR-User-Agent': userAgent
+            }
+        });
+    } catch {
+        return sendJson(res, 502, { error: 'Failed to reach HRRR backend service.' });
+    }
 
-    return sendJson(res, 200, response);
+    let payload: unknown;
+    try {
+        payload = await serviceResponse.json();
+    } catch {
+        return sendJson(res, 502, { error: 'HRRR backend service returned an invalid JSON payload.' });
+    }
+
+    if (!serviceResponse.ok) {
+        const serviceError = payload && typeof payload === 'object'
+            ? ((payload as { error?: string; detail?: string }).error ?? (payload as { detail?: string }).detail)
+            : undefined;
+        return sendJson(res, serviceResponse.status, {
+            error: serviceError ?? 'HRRR backend service request failed.'
+        });
+    }
+
+    const typedPayload = payload as Partial<HrrrResponse>;
+    if (!typedPayload.stationId || !Array.isArray(typedPayload.series)) {
+        return sendJson(res, 502, { error: 'HRRR backend service payload is missing stationId or series.' });
+    }
+
+    return sendJson(res, 200, typedPayload as HrrrResponse);
 }
