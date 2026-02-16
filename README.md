@@ -40,7 +40,7 @@ npm install
 npm run dev
 ```
 The dev server runs at http://localhost:5173/. Vite proxies NOAA and Nominatim requests during development, so API calls work without extra configuration.
-HRRR requests are proxied to the `/api/hrrr` handler when `HRRR_PROXY_TARGET` is configured.
+HRRR requests are proxied to the `/api/hrrr` handler when `HRRR_PROXY_TARGET` is configured. The handler now forwards requests to the Python HRRR virtual API service.
 
 ## Usage
 1. **Find stations:** Use the search panel to locate stations by place name/ZIP or pan the map. Results appear as markers and in the station list.
@@ -93,16 +93,18 @@ Use this quick guide to pick the right source for your scenario:
 - All NOAA requests occur client-side; ensure your deployment domain is allowed to call the CDO API and remind users to supply their own tokens.
 
 ## HRRR proxy setup
-HRRR requests are routed through `/api/hrrr` to avoid CORS restrictions and to normalize NOAA responses. The repo includes a serverless-compatible handler in `api/hrrr.ts` that calls the NOAA weather.gov gridpoint endpoints and converts them into a unified time series.
+HRRR requests are routed through `/api/hrrr` to avoid CORS restrictions and to normalize model output. The repo includes a serverless-compatible handler in `api/hrrr.ts` that validates query input and proxies requests to `services/hrrr_virtual_api` (FastAPI + Herbie), which extracts point data from HRRR files and returns the same `stationId + series` shape used by the frontend.
 
 **Recommended environment variables**
-- `HRRR_USER_AGENT`: NOAA requires a descriptive User-Agent header. Example: `rainfall-downloader/2.0 (contact: you@example.com)`.
+- `HRRR_USER_AGENT`: forwarded by the proxy as `X-HRRR-User-Agent` for downstream clients that require a descriptive User-Agent header.
+- `HRRR_SERVICE_URL`: URL of the Python HRRR virtual API endpoint (default: `http://127.0.0.1:8000/hrrr`).
 - `HRRR_PROXY_TARGET`: For local development with Vite, set this to the URL where your serverless runtime is running (e.g., `http://localhost:3000` for `vercel dev`). The Vite dev server proxies `/api/hrrr` requests to this target.
 
 **Deployment steps**
 1. Deploy the Vite frontend as usual.
-2. Deploy the `/api/hrrr` handler to your serverless/edge platform.
-3. Configure the environment variables above in your deployment settings.
+2. Run/deploy `services/hrrr_virtual_api` (FastAPI service) where your API layer can reach it.
+3. Deploy the `/api/hrrr` handler to your serverless/edge platform.
+4. Configure the environment variables above in your deployment settings.
 
 ## Key Features at a Glance
 - Interactive Leaflet map for spatial station selection.
