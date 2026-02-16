@@ -11,6 +11,7 @@ describe('NoaaService Reproduction', () => {
 
     beforeEach(() => {
         vi.resetAllMocks();
+        localStorage.clear();
         service = new NoaaService(mockToken);
         (axios.get as any).mockResolvedValue({ data: { results: [] } });
     });
@@ -32,12 +33,10 @@ describe('NoaaService Reproduction', () => {
         console.log('Generated URL:', url.toString());
         console.log('Params:', Object.fromEntries(url.searchParams.entries()));
 
-        expect(url.pathname).toContain('/cdo-web/api/v2/stations');
+        expect(url.pathname).toContain('/stations');
         expect(url.searchParams.get('datasetid')).toBe('GHCND');
-        // Check how datatypeid is serialized
-        // URLSearchParams with multiple values for same key isn't easily captured by Object.fromEntries (which takes last)
-        // So we check getAll
-        expect(url.searchParams.getAll('datatypeid')).toContain('PRCP');
+        // By design we don't apply default datatype filtering unless explicitly requested.
+        expect(url.searchParams.getAll('datatypeid')).toHaveLength(0);
         expect(url.searchParams.get('limit')).toBeDefined();
         expect(url.searchParams.get('extent')).toBeDefined();
     });
@@ -56,6 +55,7 @@ describe('NoaaService Reproduction', () => {
 
         const types = url.searchParams.getAll('datatypeid');
         expect(types).toContain('PRCP');
-        expect(types.length).toBeGreaterThanOrEqual(1);
+        expect(types).not.toContain('TMAX');
+        expect(types.length).toBe(1);
     });
 });
