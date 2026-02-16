@@ -742,21 +742,21 @@ export function Dashboard() {
 
     return (
         <div className={cn(
-            "flex flex-col bg-background p-4 md:p-6 md:pb-8 gap-6 h-full w-full",
+            "flex flex-col bg-background p-3 sm:p-4 md:p-6 md:pb-8 gap-4 sm:gap-6 h-full w-full",
             stations.length > 0 ? "overflow-y-auto" : "overflow-hidden" // minor fix for layout
         )}>
             <StatusCenter tasks={statusTasks} />
 
             {/* Main Content Area - Flex Logic for Animations */}
             <div className={cn(
-                "flex flex-col lg:flex-row gap-6 relative transition-[height]",
-                stations.length > 0 ? "h-[75vh] shrink-0" : "flex-1 min-h-0"
+                "flex flex-col lg:flex-row gap-4 sm:gap-6 relative transition-[height]",
+                stations.length > 0 ? "h-auto lg:h-[75vh] shrink-0" : "flex-1 min-h-0"
             )}>
 
                 {/* Left Column: Search & Map */}
                 <div
                     className={cn(
-                        "flex flex-col gap-4 overflow-hidden transition-all duration-700 ease-in-out h-full min-h-0 relative",
+                        "flex flex-col gap-3 sm:gap-4 overflow-hidden transition-all duration-700 ease-in-out h-full min-h-0 relative",
                         viewMode === 'discovery' ? "lg:w-[45%] opacity-100 scale-100" : "lg:w-[15%] opacity-40 hover:opacity-100 cursor-pointer"
                     )}
                     onClick={() => {
@@ -773,7 +773,7 @@ export function Dashboard() {
                     )}
 
                     <div className={cn("flex flex-col gap-4 h-full", viewMode === 'configuration' && "pointer-events-none")}>
-                        <section className="flex-none bg-card border border-border rounded-xl p-5 shadow-sm space-y-4">
+                        <section className="flex-none bg-card border border-border rounded-xl p-2.5 sm:p-5 shadow-sm space-y-3 sm:space-y-4">
 
                             <StationSearch
                                 query={searchQuery}
@@ -809,7 +809,7 @@ export function Dashboard() {
                             />
                         </section>
 
-                        <div className="flex-1 min-h-[200px] border border-border rounded-xl overflow-hidden shadow-sm relative">
+                        <div className="h-[56vh] min-h-[360px] sm:h-[52vh] lg:flex-1 lg:h-auto lg:min-h-[200px] border border-border rounded-xl overflow-hidden shadow-sm relative">
                             <StationMap
                                 stations={stations}
                                 selectedStations={selectedStations}
