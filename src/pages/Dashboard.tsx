@@ -756,7 +756,7 @@ export function Dashboard() {
                 {/* Left Column: Search & Map */}
                 <div
                     className={cn(
-                        "flex flex-col gap-3 sm:gap-4 overflow-hidden transition-all duration-700 ease-in-out h-full min-h-0 relative",
+                        "flex flex-col gap-3 sm:gap-4 overflow-hidden transition-all duration-700 ease-in-out h-auto lg:h-full min-h-0 relative",
                         viewMode === 'discovery' ? "lg:w-[45%] opacity-100 scale-100" : "lg:w-[15%] opacity-40 hover:opacity-100 cursor-pointer"
                     )}
                     onClick={() => {
@@ -772,7 +772,21 @@ export function Dashboard() {
                         </div>
                     )}
 
-                    <div className={cn("flex flex-col gap-4 h-full", viewMode === 'configuration' && "pointer-events-none")}>
+                    {viewMode === 'configuration' && (
+                        <button
+                            type="button"
+                            className="lg:hidden flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-left font-medium shadow-sm"
+                            onClick={() => setViewMode('discovery')}
+                        >
+                            <span>Map & Search</span>
+                            <span className="text-sm text-muted-foreground">Tap to expand</span>
+                        </button>
+                    )}
+
+                    <div className={cn(
+                        "flex flex-col gap-4 h-auto lg:h-full",
+                        viewMode === 'configuration' && "hidden lg:flex pointer-events-none"
+                    )}>
                         <section className="flex-none bg-card border border-border rounded-xl p-2.5 sm:p-5 shadow-sm space-y-3 sm:space-y-4">
 
                             <StationSearch
@@ -809,7 +823,7 @@ export function Dashboard() {
                             />
                         </section>
 
-                        <div className="h-[56vh] min-h-[360px] sm:h-[52vh] lg:flex-1 lg:h-auto lg:min-h-[200px] border border-border rounded-xl overflow-hidden shadow-sm relative">
+                        <div className="h-[56vh] min-h-[360px] sm:h-[52vh] shrink-0 lg:flex-1 lg:h-auto lg:min-h-[200px] border border-border rounded-xl overflow-hidden shadow-sm relative">
                             <StationMap
                                 stations={stations}
                                 selectedStations={selectedStations}
@@ -849,10 +863,21 @@ export function Dashboard() {
                         viewMode === 'discovery' ? "lg:w-[20%]" : "lg:w-[60%]"
                     )}
                 >
+                    {viewMode === 'discovery' && (
+                        <button
+                            type="button"
+                            className="lg:hidden flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-left font-medium shadow-sm"
+                            onClick={() => setViewMode('configuration')}
+                        >
+                            <span>Query Parameters</span>
+                            <span className="text-sm text-muted-foreground">Tap to expand</span>
+                        </button>
+                    )}
+
                     <section
                         className={cn(
                             "relative flex-1 bg-card border border-border rounded-xl shadow-sm flex flex-col overflow-hidden transition-colors",
-                            viewMode === 'discovery' && "bg-muted/30 border-dashed cursor-pointer hover:bg-muted/50 hover:border-primary/50"
+                            viewMode === 'discovery' && "hidden lg:flex bg-muted/30 border-dashed cursor-pointer hover:bg-muted/50 hover:border-primary/50"
                         )}
                         onClick={() => {
                             if (viewMode === 'discovery') setViewMode('configuration');
