@@ -279,7 +279,7 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
                                 filterNull={true}
                                 formatter={(value: any, name: any) => {
                                     // Don't show tooltip for hidden series
-                                    if (hiddenSeries.has(String(name))) return [undefined, undefined];
+                                    if (hiddenSeries.has(String(name))) return [] as any;
 
                                     const val = Number(value);
                                     const formattedVal = isNaN(val) ? value : val.toFixed(2);

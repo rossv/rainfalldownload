@@ -44,8 +44,25 @@ function setCache<T>(key: string, value: T) {
             timestamp: Date.now()
         };
         localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(entry));
-    } catch (e) {
-        console.warn('Cache write failed', e);
+    } catch (e: any) {
+        if (e.name === 'QuotaExceededError' || e.code === 22 || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+            console.warn('[RainfallDownloader] Cache full! Clearing old entries...');
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith(CACHE_PREFIX)) {
+                    localStorage.removeItem(k);
+                    i--; // adjust index since we removed an item
+                }
+            }
+            try {
+                const entry: CacheEntry<T> = { value, timestamp: Date.now() };
+                localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(entry));
+            } catch (retryError) {
+                console.warn('[RainfallDownloader] Cache write failed after clear', retryError);
+            }
+        } else {
+            console.warn('Cache write failed', e);
+        }
     }
 }
 

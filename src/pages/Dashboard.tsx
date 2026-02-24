@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 
 import { StationMap } from '../components/StationMap';
 import { StationList } from '../components/StationList';
@@ -224,7 +224,10 @@ export function Dashboard() {
         }
     }, [isPointSelectionMode, preferences.providerId]);
 
+    const fetchedTrackingRef = useRef<Set<string>>(new Set());
+
     useEffect(() => {
+        fetchedTrackingRef.current.clear();
         setStationAvailability({});
         setAvailabilityLoading({});
     }, [datasetId]);
@@ -420,7 +423,10 @@ export function Dashboard() {
 
             for (const station of selectedStations) {
                 if (station.isVirtual) continue;
-                if (stationAvailability[station.id] !== undefined || availabilityLoading[station.id]) continue;
+
+                const cacheKey = `${station.id}-${datasetId}`;
+                if (fetchedTrackingRef.current.has(cacheKey)) continue;
+                fetchedTrackingRef.current.add(cacheKey);
 
                 const taskId = `fetch-avail-${station.id}`;
                 newTasks.push({ id: taskId, message: `Checking data for ${station.name}...`, status: 'pending' });
@@ -462,7 +468,8 @@ export function Dashboard() {
         };
 
         fetchAvailability();
-    }, [selectedStations, dataSource, stationAvailability, availabilityLoading, datasetId, supportsDataTypeLookup]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedStations, dataSource, datasetId, supportsDataTypeLookup]);
 
     const availableDataTypes = useMemo(() => {
         const allTypes = new Map<string, import('../types').DataType>();
