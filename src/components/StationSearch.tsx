@@ -50,13 +50,13 @@ export function StationSearch({
     const showTextSearch = !disableTextSearch;
 
     return (
-        <div className="flex flex-col gap-2">
-            <form onSubmit={(e) => { e.preventDefault(); onSearch(); }} className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-3">
+            <form onSubmit={(e) => { e.preventDefault(); onSearch(); }} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 {providerId && onProviderChange && providerOptions && (
                     <select
                         value={providerId}
                         onChange={(e) => onProviderChange(e.target.value)}
-                        className="px-3 py-1 rounded-md border border-input bg-primary/5 hover:bg-primary/10 transition-colors text-xs font-semibold text-primary outline-none focus:ring-2 focus:ring-primary/20"
+                        className="h-11 w-full sm:w-auto sm:max-w-[230px] px-3 rounded-md border border-input bg-primary/5 hover:bg-primary/10 transition-colors text-xs font-semibold text-primary outline-none focus:ring-2 focus:ring-primary/20"
                         title="Select Data Provider"
                     >
                         {providerOptions.map(p => (
@@ -68,7 +68,7 @@ export function StationSearch({
                     <select
                         value={datasetId}
                         onChange={(e) => onDatasetChange(e.target.value)}
-                        className="px-3 py-1 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all text-xs max-w-[200px] font-medium"
+                        className="h-11 w-full sm:w-auto sm:max-w-[230px] px-3 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all text-xs font-medium"
                         title="Select Dataset"
                     >
                         {datasetOptions.map(opt => (
@@ -78,33 +78,37 @@ export function StationSearch({
                 )}
                 {showTextSearch && (
                     <>
-                        <input
-                            type="text"
-                            value={query}
-                            onChange={(e) => onQueryChange(e.target.value)}
-                            placeholder="Find Stations"
-                            aria-label="Search stations"
-                            className="flex-1 min-w-0 px-4 py-1 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all"
-                        />
-                        <button
-                            type="button"
-                            onClick={onLocationSearch}
-                            disabled={disabled}
-                            title="Use my location"
-                            aria-label="Search stations near my location"
-                            className="px-3 py-1 bg-secondary text-secondary-foreground border border-input rounded-md hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center"
-                        >
-                            <MapPin className="h-4 w-4" />
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={disabled}
-                            aria-label="Search stations"
-                            className="px-4 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-2 whitespace-nowrap"
-                        >
-                            {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Search className="h-4 w-4" />}
-                            Search
-                        </button>
+                        <div className="flex flex-col gap-2 sm:flex-1 sm:min-w-[280px]">
+                            <input
+                                type="text"
+                                value={query}
+                                onChange={(e) => onQueryChange(e.target.value)}
+                                placeholder="Find stations by city, state, or id"
+                                aria-label="Search stations"
+                                className="h-11 w-full px-4 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all"
+                            />
+                            <div className="grid grid-cols-[auto,1fr] gap-2 sm:flex sm:justify-end">
+                                <button
+                                    type="button"
+                                    onClick={onLocationSearch}
+                                    disabled={disabled}
+                                    title="Use my location"
+                                    aria-label="Search stations near my location"
+                                    className="h-11 px-3 bg-secondary text-secondary-foreground border border-input rounded-md hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center"
+                                >
+                                    <MapPin className="h-4 w-4" />
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={disabled}
+                                    aria-label="Search stations"
+                                    className="h-11 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                                >
+                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Search className="h-4 w-4" />}
+                                    Search
+                                </button>
+                            </div>
+                        </div>
                     </>
                 )}
             </form>

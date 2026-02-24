@@ -16,23 +16,23 @@ export function Layout() {
 
     return (
         <div className="h-[100dvh] overflow-hidden bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
-            <header className="border-b border-border bg-card p-4 sticky top-0 z-30 shadow-sm backdrop-blur-md bg-opacity-80">
-                <div className="container mx-auto flex justify-between items-center">
-                    <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <header className="border-b border-border bg-card px-3 py-3 md:p-4 sticky top-0 z-30 shadow-sm backdrop-blur-md bg-opacity-80">
+                <div className="container mx-auto flex justify-between items-center gap-2">
+                    <Link to="/" className="flex items-center gap-2 md:gap-3 hover:opacity-80 transition-opacity min-w-0">
                         <div className="bg-primary/10 p-2 rounded-lg">
                             <CloudRain className="h-6 w-6 text-primary" />
                         </div>
-                        <div>
-                            <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
+                        <div className="min-w-0">
+                            <h1 className="text-lg md:text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent truncate">
                                 Rainfall Downloader
                             </h1>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-foreground hidden sm:block truncate">
                                 {activeProvider ? `Using ${activeProvider.name}. Configure providers in Settings.` : 'Multi-provider rainfall data interface'}
                             </p>
                         </div>
                     </Link>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                         <button
                             onClick={() => setShowHelp(true)}
                             className="text-sm font-medium hover:text-primary transition-colors hidden md:flex items-center gap-1 mr-4"
@@ -41,7 +41,7 @@ export function Layout() {
                         </button>
                         <button
                             onClick={toggleDarkMode}
-                            className="group relative flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all outline-none focus:ring-2 focus:ring-blue-500/20 active:scale-95 hover:shadow-sm"
+                            className="group relative flex items-center gap-1.5 sm:gap-2 px-1.5 sm:px-2 py-1.5 rounded-lg bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all outline-none focus:ring-2 focus:ring-blue-500/20 active:scale-95 hover:shadow-sm"
                             title="Toggle Theme"
                         >
                             <div className={`p-1 rounded-md transition-all duration-500 ${preferences.darkMode ? 'rotate-90 bg-transparent text-slate-400' : 'rotate-0 bg-white shadow-sm text-amber-500'}`}>
@@ -97,5 +97,4 @@ export function Layout() {
         </div>
     );
 }
-
 

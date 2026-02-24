@@ -10,7 +10,7 @@ export const HRRR_CAPABILITIES: DataSourceCapabilities = {
     supportsStationSearch: false,
     supportsSpatialSearch: true,
     supportsGridInterpolation: true,
-    maxDateRangeDays: 2,
+    maxDateRangeDays: 30,
 };
 
 export class HrrrService implements DataSource {

@@ -8,6 +8,13 @@ function formatDate(isoString: string): string {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+function escapeCsvValue(value: unknown): string {
+    const stringValue = String(value ?? '');
+    const escaped = stringValue.replace(/"/g, '""');
+    const shouldQuote = /[",\n\r]/.test(escaped);
+    return shouldQuote ? `"${escaped}"` : escaped;
+}
+
 export function downloadCSV(stations: Station[], data: UnifiedTimeSeries[], datatypes?: string[]) {
     // Note: datatypes arg is essentially parameters now
     const activeParameters = datatypes?.length
@@ -48,7 +55,7 @@ export function downloadCSV(stations: Station[], data: UnifiedTimeSeries[], data
             }));
         });
         // Using comma for standard CSV column separation
-        const headers = ['Timestamp', ...stationHeaders.map(h => h.label)].join(',');
+        const headers = ['Timestamp', ...stationHeaders.map(h => escapeCsvValue(h.label))].join(',');
 
         const rows = allTimestamps.map(ts => {
             // Clean date format
@@ -58,7 +65,7 @@ export function downloadCSV(stations: Station[], data: UnifiedTimeSeries[], data
                 const val = dateValues?.get(h.key);
                 rowValues.push(val !== undefined ? val.toString() : '');
             });
-            return rowValues.join(',');
+            return rowValues.map(value => escapeCsvValue(value)).join(',');
         });
 
         const content = [headers, ...rows].join('\n');
@@ -75,7 +82,13 @@ export function downloadCSV(stations: Station[], data: UnifiedTimeSeries[], data
             const parts = d.stationId?.split(':') || ['', d.stationId || ''];
             const simpleId = parts.length > 1 ? parts[1] : d.stationId;
             const station = stations.find(s => s.id === d.stationId);
-            return `${simpleId},"${station?.name || ''}",${formatDate(d.timestamp)},${d.value},${d.parameter || 'PRCP'}`;
+            return [
+                escapeCsvValue(simpleId),
+                escapeCsvValue(station?.name || ''),
+                escapeCsvValue(formatDate(d.timestamp)),
+                escapeCsvValue(d.value),
+                escapeCsvValue(d.parameter || 'PRCP')
+            ].join(',');
         });
 
         const content = [headers, ...rows].join('\n');

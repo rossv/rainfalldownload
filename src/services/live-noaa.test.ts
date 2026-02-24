@@ -7,10 +7,12 @@ import axios from 'axios';
 const API_TOKEN = 'lvNTjIcbIWQKUCyMrHhyowMeojwoFsno';
 const BASE_NOAA = 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
 
+const runLiveNoaa = process.env.RUN_LIVE_NOAA_TESTS === 'true';
+
 describe('NOAA API Live Verification', () => {
 
     // 1. Direct API Access (Node.js environment - no CORS)
-    it('should fetch stations successfully via Direct API (verify key/endpoint)', async () => {
+    it.skipIf(!runLiveNoaa)('should fetch stations successfully via Direct API (verify key/endpoint)', async () => {
         const endpoint = '/stations';
         const url = `${BASE_NOAA}${endpoint}`;
 
@@ -41,7 +43,7 @@ describe('NOAA API Live Verification', () => {
     });
 
     // 2. Test CORS Proxy 1: corsproxy.io
-    it('should fetch via corsproxy.io', async () => {
+    it.skipIf(!runLiveNoaa)('should fetch via corsproxy.io', async () => {
         const endpoint = '/stations?limit=1&datasetid=GHCND';
         const targetUrl = `${BASE_NOAA}${endpoint}`;
         const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
@@ -64,7 +66,7 @@ describe('NOAA API Live Verification', () => {
     });
 
     // 3. Test CORS Proxy 2: thingproxy
-    it('should fetch via thingproxy', async () => {
+    it.skipIf(!runLiveNoaa)('should fetch via thingproxy', async () => {
         const endpoint = '/stations?limit=1&datasetid=GHCND';
         const targetUrl = `${BASE_NOAA}${endpoint}`;
         const proxyUrl = `https://thingproxy.freeboard.io/fetch/${targetUrl}`;
