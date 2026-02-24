@@ -146,45 +146,58 @@ export class NoaaService implements DataSource {
 
         const fullTargetUrl = url.toString();
 
-        // Always try direct NOAA endpoint first with a short timeout, regardless of environment.
-        try {
-            const res = await this.fetchWithRetry(fullTargetUrl, {
-                headers: this.headers,
-                timeout: 5000
-            });
-            return res.data;
-        } catch (error) {
-            console.warn('[RainfallDownloader] Direct NOAA request failed, attempting proxies...', error);
-        }
-
-        // Fallback Strategy
-        const proxies = [
-            `https://corsproxy.io/?${encodeURIComponent(fullTargetUrl)}`,
-            `https://thingproxy.freeboard.io/fetch/${fullTargetUrl}`
-        ];
-
-        let lastError;
-
-        for (const proxyUrl of proxies) {
+        // In dev mode, use Vite proxy (no CORS issues)
+        if (import.meta.env.DEV) {
             try {
-                console.log(`[RainfallDownloader] Attempting via proxy: ${proxyUrl}`);
-                // allorigins doesn't always support custom headers nicely, but we try.
-                // Note: NOAA requires 'token' header. corsproxy.io forwards it. allorigins might not.
-                // If allorigins fails to forward header, NOAA returns 400/401.
-                const res = await this.fetchWithRetry(proxyUrl, {
+                const res = await this.fetchWithRetry(fullTargetUrl, {
                     headers: this.headers,
-                    timeout: 5000
+                    timeout: 15000
                 });
                 return res.data;
             } catch (error) {
-                console.warn(`[RainfallDownloader] Proxy failed: ${proxyUrl}`, error);
-                lastError = error;
-                // If it's a 401/403 (Auth), switching proxy won't help, so throw immediately to avoid wasting time?
-                // Actually 504 is our main enemy. We continue.
+                console.error('[RainfallDownloader] Dev proxy request failed:', error);
+                throw error;
             }
         }
 
-        throw lastError;
+        // Production: Try CORS proxies
+        // Note: Most free CORS proxies don't properly forward custom headers like 'token'
+        // corsproxy.io claims to forward headers; thingproxy is often reliable
+        const proxies = [
+            `https://corsproxy.io/?${encodeURIComponent(fullTargetUrl)}`,
+            `https://thingproxy.freeboard.io/fetch/${fullTargetUrl}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(fullTargetUrl)}`
+        ];
+
+        let lastError: any;
+
+        for (const proxyUrl of proxies) {
+            try {
+                console.log(`[RainfallDownloader] Attempting via proxy: ${proxyUrl.substring(0, 60)}...`);
+                const res = await this.fetchWithRetry(proxyUrl, {
+                    headers: this.headers,
+                    timeout: 15000
+                });
+                console.log(`[RainfallDownloader] Proxy success!`);
+                return res.data;
+            } catch (error: any) {
+                console.warn(`[RainfallDownloader] Proxy failed: ${proxyUrl.substring(0, 60)}...`, error?.message);
+                lastError = error;
+
+                // Check for auth errors - indicates proxy forwarded request but token wasn't accepted
+                const status = error?.response?.status;
+                if (status === 401 || status === 403) {
+                    console.warn('[RainfallDownloader] Auth failed - proxy may not forward headers properly');
+                }
+            }
+        }
+
+        // Provide helpful error message
+        const errorMessage = 'All CORS proxies failed. NOAA API requires authenticated requests that most free CORS proxies cannot handle. ' +
+            'Please run the app locally (npm run dev) for full functionality, or consider deploying your own CORS proxy.';
+        console.error(`[RainfallDownloader] ${errorMessage}`);
+
+        throw new Error(lastError?.message || errorMessage);
     }
 
     async findStationsByCity(city: string, limit = 20, buffer = 0.25, options: DataQueryOptions = {}): Promise<Station[]> {

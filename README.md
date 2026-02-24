@@ -39,7 +39,7 @@ npm install
 ```bash
 npm run dev
 ```
-The dev server runs at http://localhost:5173/. Vite proxies NOAA and Nominatim requests during development, so API calls work without extra configuration.
+The dev server runs at http://localhost:5173/rainfalldownload/. Vite proxies NOAA and Nominatim requests during development, so API calls work without extra configuration.
 HRRR requests are proxied to the `/api/hrrr` handler when `HRRR_PROXY_TARGET` is configured.
 
 ## Usage

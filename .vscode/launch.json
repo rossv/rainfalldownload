@@ -2,10 +2,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "pwa-chrome",
+            "type": "chrome",
             "request": "launch",
             "name": "Launch Chrome against localhost",
-            "url": "http://localhost:5173/rainfallldownload/",
+            "url": "http://localhost:5173/rainfalldownload/",
             "webRoot": "${workspaceFolder}",
             "preLaunchTask": "npm: dev"
         }
