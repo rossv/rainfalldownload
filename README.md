@@ -40,7 +40,7 @@ npm install
 npm run dev
 ```
 The dev server runs at http://localhost:5173/rainfalldownload/. Vite proxies NOAA and Nominatim requests during development, so API calls work without extra configuration.
-HRRR requests are proxied to the `/api/hrrr` handler when `HRRR_PROXY_TARGET` is configured.
+HRRR requests (made to `/api/hrrr`) are proxied to `http://localhost:3000` by default, or to a custom backend if the `HRRR_PROXY_TARGET` environment variable is set.
 
 ## Usage
 1. **Find stations:** Use the search panel to locate stations by place name/ZIP or pan the map. Results appear as markers and in the station list.
