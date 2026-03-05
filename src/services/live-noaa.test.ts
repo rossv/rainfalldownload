@@ -7,7 +7,9 @@ import axios from 'axios';
 const API_TOKEN = 'lvNTjIcbIWQKUCyMrHhyowMeojwoFsno';
 const BASE_NOAA = 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
 
-const runLiveNoaa = process.env.RUN_LIVE_NOAA_TESTS === 'true';
+const runLiveNoaa =
+    (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
+        ?.env?.RUN_LIVE_NOAA_TESTS === 'true';
 
 describe('NOAA API Live Verification', () => {
 
