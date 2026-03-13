@@ -6,22 +6,32 @@ const NOMINATIM_BASE = import.meta.env.DEV
     : 'https://nominatim.openstreetmap.org/search';
 
 export async function geocodeCity(city: string): Promise<{ lat: number; lon: number } | null> {
+    const query = city.trim();
+    if (!query) return null;
+
     try {
-        console.log(`[RainfallDownloader] Geocoding city: ${city}`);
+        console.log(`[RainfallDownloader] Geocoding city: ${query}`);
         const geoRes = await axios.get(NOMINATIM_BASE, {
-            params: { q: city, format: 'json', limit: 1 },
+            params: { q: query, format: 'json', limit: 1 },
             timeout: 10000,
             headers: {
-                // Nominatim requires a User-Agent for identification
                 'User-Agent': 'RainfallDownloader/1.0'
             }
         });
 
-        if (geoRes.data && geoRes.data.length > 0) {
-            console.log(`[RainfallDownloader] Geocoding success:`, geoRes.data[0]);
+        if (Array.isArray(geoRes.data) && geoRes.data.length > 0) {
+            const lat = Number(geoRes.data[0].lat);
+            const lon = Number(geoRes.data[0].lon);
+
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+                console.warn('[RainfallDownloader] Geocoding returned invalid coordinates');
+                return null;
+            }
+
+            console.log('[RainfallDownloader] Geocoding success:', geoRes.data[0]);
             return {
-                lat: parseFloat(geoRes.data[0].lat),
-                lon: parseFloat(geoRes.data[0].lon)
+                lat,
+                lon
             };
         }
 

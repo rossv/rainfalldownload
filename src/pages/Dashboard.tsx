@@ -16,6 +16,56 @@ import { usePreferences } from '../hooks/usePreferences';
 import { NOAA_DATATYPE_WHITELIST, NOAA_DATASET_WHITELIST } from '../services/noaa';
 import { DEFAULT_HRRR_PARAMETER, HRRR_PARAMETER_OPTIONS } from '../services/providers/hrrr-params';
 
+const NOAA_FETCH_CONCURRENCY = 2;
+const DEFAULT_FETCH_CONCURRENCY = 4;
+
+type StationFetchResult =
+    | { status: 'success'; station: Station; data: UnifiedTimeSeries[] }
+    | { status: 'empty'; station: Station }
+    | { status: 'error'; station: Station; error: string };
+
+const formatStationFetchError = (error: unknown) => {
+    if (axios.isAxiosError(error)) {
+        if (error.response?.status === 401) return 'Unauthorized';
+        if (error.response?.status === 403) return 'Forbidden';
+        if (error.response?.status === 429) return 'Rate limited';
+        if (error.response?.status) return `HTTP ${error.response.status}`;
+        if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') return 'Timeout';
+        return error.message || 'Network error';
+    }
+
+    if (error instanceof Error && error.message.trim()) {
+        return error.message;
+    }
+
+    return 'Unknown error';
+};
+
+async function runWithConcurrency<T, TResult>(
+    items: T[],
+    concurrency: number,
+    worker: (item: T) => Promise<TResult>
+): Promise<TResult[]> {
+    const results = new Array<TResult>(items.length);
+    let nextIndex = 0;
+
+    const runner = async () => {
+        while (true) {
+            const currentIndex = nextIndex;
+            nextIndex += 1;
+
+            if (currentIndex >= items.length) break;
+            results[currentIndex] = await worker(items[currentIndex]);
+        }
+    };
+
+    await Promise.all(
+        Array.from({ length: Math.min(Math.max(concurrency, 1), items.length) }, () => runner())
+    );
+
+    return results;
+}
+
 export function Dashboard() {
     const { preferences, setUnits, setProvider } = usePreferences();
 
@@ -503,12 +553,29 @@ export function Dashboard() {
             return;
         }
 
+        const stationsToFetch = Array.from(new Map(selectedStations.map(station => [station.id, station])).values());
+        const buildFetchSnapshot = () => ({
+            stationIds: stationsToFetch.map(station => station.id).sort(),
+            dateRange: { ...dateRange },
+            dataTypes: [...selectedDataTypes].sort(),
+            datasetId,
+            providerId: preferences.providerId,
+            hrrrOptions: preferences.providerId === 'hrrr'
+                ? {
+                    productType: hrrrProductType,
+                    aggregationWindow: hrrrAggregationWindow,
+                    leadHours: hrrrLeadHours
+                }
+                : undefined,
+            timestamp: Date.now()
+        });
+
         setLoading(true);
         const taskId = 'fetch-rain-batch';
         setStatusTasks(prev => prev.filter(t => !t.id.startsWith('err-')));
-        setStatusTasks(prev => [...prev, { id: taskId, message: `Downloading data for ${selectedStations.length} stations...`, status: 'pending' }]);
+        setStatusTasks(prev => [...prev, { id: taskId, message: `Downloading data for ${stationsToFetch.length} stations...`, status: 'pending' }]);
 
-        const fetchStationData = async (station: Station) => {
+        const fetchStationData = async (station: Station): Promise<StationFetchResult> => {
             try {
                 const hrrrOptions = preferences.providerId === 'hrrr'
                     ? {
@@ -530,95 +597,78 @@ export function Dashboard() {
                     ...(preferences.providerId === 'noaa' ? { datasetId } : {}),
                     ...(hrrrOptions ? { hrrr: hrrrOptions } : {})
                 });
-                return { success: true, station, data };
-            } catch (error: any) {
-                let msg = error.message || 'Unknown error';
-                if (error.response) {
-                    msg = `HTTP ${error.response.status}`;
-                } else if (error.code === 'ECONNABORTED') {
-                    msg = 'Timeout';
+
+                if (data.length === 0) {
+                    return { status: 'empty', station };
                 }
-                return { success: false, station, error: msg };
+
+                return { status: 'success', station, data };
+            } catch (error) {
+                return { status: 'error', station, error: formatStationFetchError(error) };
             }
         };
 
-        const results = await Promise.all(selectedStations.map(fetchStationData));
+        try {
+            const concurrency = preferences.providerId === 'noaa' ? NOAA_FETCH_CONCURRENCY : DEFAULT_FETCH_CONCURRENCY;
+            const results = await runWithConcurrency(stationsToFetch, concurrency, fetchStationData);
 
-        const successfulData = results
-            .filter((r): r is { success: true, station: Station, data: UnifiedTimeSeries[] } => r.success)
-            .flatMap(r => r.data);
+            const successes = results.filter((result): result is Extract<StationFetchResult, { status: 'success' }> => result.status === 'success');
+            const empties = results.filter((result): result is Extract<StationFetchResult, { status: 'empty' }> => result.status === 'empty');
+            const errors = results.filter((result): result is Extract<StationFetchResult, { status: 'error' }> => result.status === 'error');
+            const successfulData = successes.flatMap(result => result.data);
 
-        const errors = results
-            .filter((r): r is { success: false, station: Station, error: string } => !r.success);
-
-        setRainfallData(successfulData);
-
-        if (errors.length === 0) {
-            setStatusTasks(prev => prev.map(t => t.id === taskId ? {
-                ...t,
-                message: `Loaded ${successfulData.length} records from ${selectedStations.length} stations`,
-                status: 'success'
-            } : t));
-            setTimeout(() => setStatusTasks(prev => prev.filter(t => t.id !== taskId)), 3000);
-
-            setLastFetchedParams({
-                stationIds: selectedStations.map(s => s.id).sort(),
-                dateRange: { ...dateRange },
-                dataTypes: [...selectedDataTypes].sort(),
-                datasetId,
-                providerId: preferences.providerId,
-                hrrrOptions: preferences.providerId === 'hrrr'
-                    ? {
-                        productType: hrrrProductType,
-                        aggregationWindow: hrrrAggregationWindow,
-                        leadHours: hrrrLeadHours
-                    }
-                    : undefined,
-                timestamp: Date.now()
-            });
-
-        } else {
-            const successCount = results.length - errors.length;
-            const summaryMsg = successCount > 0
-                ? `Partial Success: ${successCount} ok, ${errors.length} failed.`
-                : `Failed to download data for all ${errors.length} stations.`;
-
-            setStatusTasks(prev => prev.map(t => t.id === taskId ? {
-                ...t,
-                message: summaryMsg,
-                status: 'error'
-            } : t));
-
-            if (successfulData.length > 0) {
-                setLastFetchedParams({
-                    stationIds: selectedStations.map(s => s.id).sort(),
-                    dateRange: { ...dateRange },
-                    dataTypes: [...selectedDataTypes].sort(),
-                    datasetId,
-                    providerId: preferences.providerId,
-                    hrrrOptions: preferences.providerId === 'hrrr'
-                        ? {
-                            productType: hrrrProductType,
-                            aggregationWindow: hrrrAggregationWindow,
-                            leadHours: hrrrLeadHours
-                        }
-                        : undefined,
-                    timestamp: Date.now()
-                });
+            if (successfulData.length > 0 || empties.length > 0) {
+                setRainfallData(successfulData);
             }
 
+            if (errors.length === 0 && empties.length === 0) {
+                setStatusTasks(prev => prev.map(t => t.id === taskId ? {
+                    ...t,
+                    message: `Loaded ${successfulData.length} records from ${successes.length} stations`,
+                    status: 'success'
+                } : t));
+                setLastFetchedParams(buildFetchSnapshot());
+                setTimeout(() => setStatusTasks(prev => prev.filter(t => t.id !== taskId)), 3000);
+                return;
+            }
+
+            const summaryParts: string[] = [];
+            if (successes.length > 0) {
+                summaryParts.push(`Loaded ${successfulData.length} records from ${successes.length} stations.`);
+            }
+            if (empties.length > 0) {
+                summaryParts.push(`${empties.length} station${empties.length === 1 ? '' : 's'} returned no data.`);
+            }
+            if (errors.length > 0) {
+                summaryParts.push(`${errors.length} station${errors.length === 1 ? '' : 's'} failed.`);
+            }
+
+            setStatusTasks(prev => prev.map(t => t.id === taskId ? {
+                ...t,
+                message: summaryParts.join(' '),
+                status: successes.length > 0 ? 'success' : 'error'
+            } : t));
+
+            if (successfulData.length > 0 || empties.length > 0) {
+                setLastFetchedParams(buildFetchSnapshot());
+            }
+
+            const issues = [
+                ...empties.map(result => `${result.station.name}: No data returned for the selected date range.`),
+                ...errors.map(result => `${result.station.name}: ${result.error}`)
+            ];
+
             const MAX_ERRORS_SHOWN = 5;
-            const displayedErrors = errors.slice(0, MAX_ERRORS_SHOWN);
-            const newErrorTasks = displayedErrors.map(e => ({
-                id: `err-${e.station.id}-${Date.now()}`,
-                message: `${e.station.name}: ${e.error}`,
+            const newErrorTasks = issues.slice(0, MAX_ERRORS_SHOWN).map((message, index) => ({
+                id: `err-${taskId}-${index}-${Date.now()}`,
+                message,
                 status: 'error' as const
             }));
 
-            if (errors.length > MAX_ERRORS_SHOWN) {
+            if (issues.length > MAX_ERRORS_SHOWN) {
                 newErrorTasks.push({
                     id: `err-more-${Date.now()}`,
-                    message: `...and ${errors.length - MAX_ERRORS_SHOWN} more errors.`,
+                    message: `...and ${issues.length - MAX_ERRORS_SHOWN} more issues.`,
                     status: 'error' as const
                 });
             }
@@ -626,8 +676,9 @@ export function Dashboard() {
             setStatusTasks(prev => [...prev, ...newErrorTasks]);
             setTimeout(() => setStatusTasks(prev => prev.filter(t => t.id !== taskId)), 5000);
             setTimeout(() => setStatusTasks(prev => prev.filter(t => !t.id.startsWith('err-'))), 10000);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const toggleDataType = (typeId: string) => {

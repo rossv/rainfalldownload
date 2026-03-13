@@ -1,24 +1,81 @@
 import axios from 'axios';
-import type { Station, DataSource } from '../types';
+import type { DataSource, DataType, FetchDataParams, Station, UnifiedTimeSeries } from '../types';
 import { geocodeCity } from './geocoding';
 import type { DataQueryOptions, DataSourceCapabilities } from '../types/data-source';
 
-// NOAA-specific constants kept private to the provider implementation.
 const BASE_NOAA = import.meta.env.DEV
     ? '/api/noaa'
     : 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
 
-const CACHE_PREFIX = 'noaa_cache_v5_';
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
-
+const CACHE_PREFIX = 'noaa_cache_v6_';
+const CACHE_TTL = 24 * 60 * 60 * 1000;
 const DEFAULT_DATASET = 'GHCND';
+const DEFAULT_SEARCH_LIMIT = 20;
+const DEFAULT_SEARCH_BUFFER = 0.25;
+const REQUEST_TIMEOUT_MS = 15000;
+const MAX_RETRIES = 3;
+const MAX_PAGE_SIZE = 1000;
+const MAX_PAGE_REQUESTS = 25;
+const MAX_SEARCH_LIMIT = 1000;
 
 export const NOAA_DATASET_WHITELIST = [DEFAULT_DATASET, 'PRECIP_HLY', 'GSOM', 'GSOY'] as const;
 export const NOAA_DATATYPE_WHITELIST = ['PRCP', 'SNOW', 'SNWD', 'WESD', 'WESF', 'HPCP', 'QPCP'] as const;
 
+type NoaaDatasetId = typeof NOAA_DATASET_WHITELIST[number];
+type NoaaDatatypeId = typeof NOAA_DATATYPE_WHITELIST[number];
+
 interface CacheEntry<T> {
     value: T;
     timestamp: number;
+}
+
+interface AxiosLikeError {
+    code?: string;
+    message?: string;
+    response?: {
+        status?: number;
+        statusText?: string;
+        data?: unknown;
+        headers?: Record<string, string | undefined>;
+    };
+}
+
+interface NoaaEnvelope<T> {
+    results?: T[];
+    metadata?: {
+        resultset?: {
+            count?: number;
+            limit?: number;
+            offset?: number;
+        };
+    };
+}
+
+interface NoaaStationRecord {
+    id?: string;
+    name?: string;
+    latitude?: number;
+    longitude?: number;
+    elevation?: number;
+    elevationUnit?: string;
+    mindate?: string;
+    maxdate?: string;
+    datacoverage?: number;
+}
+
+interface NoaaDataTypeRecord {
+    id?: string;
+    name?: string;
+    mindate?: string;
+    maxdate?: string;
+    datacoverage?: number;
+}
+
+interface NoaaDataRecord {
+    date?: string;
+    datatype?: string;
+    value?: number | string;
+    attributes?: string;
 }
 
 function getCache<T>(key: string): T | null {
@@ -44,27 +101,44 @@ function setCache<T>(key: string, value: T) {
             timestamp: Date.now()
         };
         localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(entry));
-    } catch (e: any) {
-        if (e.name === 'QuotaExceededError' || e.code === 22 || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-            console.warn('[RainfallDownloader] Cache full! Clearing old entries...');
-            for (let i = 0; i < localStorage.length; i++) {
-                const k = localStorage.key(i);
-                if (k && k.startsWith(CACHE_PREFIX)) {
-                    localStorage.removeItem(k);
-                    i--; // adjust index since we removed an item
+    } catch (error: any) {
+        if (error?.name === 'QuotaExceededError' || error?.code === 22 || error?.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+            const cacheKeys: string[] = [];
+            for (let index = 0; index < localStorage.length; index += 1) {
+                const storageKey = localStorage.key(index);
+                if (storageKey?.startsWith(CACHE_PREFIX)) {
+                    cacheKeys.push(storageKey);
                 }
             }
+
+            cacheKeys.forEach(storageKey => localStorage.removeItem(storageKey));
+
             try {
                 const entry: CacheEntry<T> = { value, timestamp: Date.now() };
                 localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(entry));
             } catch (retryError) {
-                console.warn('[RainfallDownloader] Cache write failed after clear', retryError);
+                console.warn('[RainfallDownloader] NOAA cache write failed after clearing cache.', retryError);
             }
         } else {
-            console.warn('Cache write failed', e);
+            console.warn('[RainfallDownloader] NOAA cache write failed.', error);
         }
     }
 }
+
+const isAxiosLikeError = (error: unknown): error is AxiosLikeError => (
+    typeof error === 'object' &&
+    error !== null &&
+    ('message' in error || 'response' in error || 'code' in error)
+);
+
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+const toIsoTimestamp = (value: string) => {
+    const normalized = value.includes('T') ? value : `${value}T00:00:00`;
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return normalized;
+};
 
 export const NOAA_CAPABILITIES: DataSourceCapabilities = {
     id: 'noaa',
@@ -87,23 +161,32 @@ export class NoaaService implements DataSource {
     readonly capabilities: DataSourceCapabilities = NOAA_CAPABILITIES;
 
     constructor(token: string) {
-        this.token = token;
-        console.log(`[RainfallDownloader] Service Initialized. Build: ${new Date().toISOString()}`);
+        this.token = token.trim();
+        console.log(`[RainfallDownloader] NOAA service initialized. Build: ${new Date().toISOString()}`);
     }
 
     private get headers() {
-        return { token: this.token };
+        return {
+            Accept: 'application/json',
+            token: this.token
+        };
     }
 
-    private normalizeDatasetId(datasetId?: string) {
-        return NOAA_DATASET_WHITELIST.includes((datasetId ?? DEFAULT_DATASET) as typeof NOAA_DATASET_WHITELIST[number])
-            ? (datasetId ?? DEFAULT_DATASET)
+    private ensureToken() {
+        if (!this.token) {
+            throw new Error('NOAA API token is required. Add it in Settings before searching or downloading data.');
+        }
+    }
+
+    private normalizeDatasetId(datasetId?: string): NoaaDatasetId {
+        const normalized = datasetId ?? DEFAULT_DATASET;
+        return NOAA_DATASET_WHITELIST.includes(normalized as NoaaDatasetId)
+            ? normalized as NoaaDatasetId
             : DEFAULT_DATASET;
     }
 
-    private getDefaultDatatype(datasetId: string): string {
+    private getDefaultDatatype(datasetId: string): NoaaDatatypeId {
         if (datasetId === 'PRECIP_HLY') return 'HPCP';
-        if (datasetId === 'PRECIP_15') return 'QPCP';
         return 'PRCP';
     }
 
@@ -111,176 +194,282 @@ export class NoaaService implements DataSource {
         const defaultType = this.getDefaultDatatype(datasetId || DEFAULT_DATASET);
         const input = datatypes && datatypes.length > 0 ? datatypes : [defaultType];
 
-        const normalized = input.filter(dt => NOAA_DATATYPE_WHITELIST.includes(dt as typeof NOAA_DATATYPE_WHITELIST[number]));
+        const normalized = input.filter(dt => NOAA_DATATYPE_WHITELIST.includes(dt as NoaaDatatypeId));
 
         if (normalized.length === 0) return [defaultType];
-        // Deduplicate while preserving order
         return Array.from(new Set(normalized));
     }
 
+    private normalizeLimit(limit?: number) {
+        if (!Number.isFinite(limit)) return DEFAULT_SEARCH_LIMIT;
+        return Math.max(1, Math.min(MAX_SEARCH_LIMIT, Math.floor(limit as number)));
+    }
 
+    private normalizeBuffer(buffer?: number) {
+        if (!Number.isFinite(buffer)) return DEFAULT_SEARCH_BUFFER;
+        return Math.max(0.01, Math.min(5, buffer as number));
+    }
 
+    private normalizeDate(value: string, label: string) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            throw new Error(`${label} must use YYYY-MM-DD format.`);
+        }
 
+        const parsed = new Date(`${value}T00:00:00Z`);
+        if (Number.isNaN(parsed.getTime())) {
+            throw new Error(`${label} is invalid.`);
+        }
+
+        return value;
+    }
+
+    private buildUrl(endpoint: string, params: Record<string, unknown> = {}) {
+        const url = new URL(`${BASE_NOAA}${endpoint}`, window.location.origin);
+
+        Object.entries(params).forEach(([key, value]) => {
+            if (Array.isArray(value)) {
+                value.forEach(item => {
+                    if (item !== undefined && item !== null && `${item}`.trim() !== '') {
+                        url.searchParams.append(key, String(item));
+                    }
+                });
+                return;
+            }
+
+            if (value !== undefined && value !== null && `${value}`.trim() !== '') {
+                url.searchParams.append(key, String(value));
+            }
+        });
+
+        return url.toString();
+    }
 
     private async wait(ms: number) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    private async fetchWithRetry(url: string, options: any, retries = 3): Promise<any> {
-        let attempt = 0;
-        while (attempt < retries) {
-            try {
-                return await axios.get(url, options);
-            } catch (error: any) {
-                attempt++;
-                // Retry on 5xx errors or network errors (which often appear as status 0 or undefined in axios)
-                const status = error.response?.status;
-                const isRetryable = !status || status >= 500 || status === 429;
+    private isRetryableError(error: unknown) {
+        if (!isAxiosLikeError(error)) return false;
 
-                if (!isRetryable || attempt >= retries) {
-                    throw error;
+        const status = error.response?.status;
+        if (status === undefined) return true;
+        return status === 408 || status === 425 || status === 429 || status >= 500;
+    }
+
+    private getRetryDelayMs(attempt: number, error: unknown) {
+        if (isAxiosLikeError(error)) {
+            const retryAfter = error.response?.headers?.['retry-after'];
+            if (retryAfter) {
+                const seconds = Number(retryAfter);
+                if (Number.isFinite(seconds)) {
+                    return Math.max(500, seconds * 1000);
                 }
 
-                const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s...
-                console.warn(`[RainfallDownloader] Request failed, retrying in ${delay}ms... (Attempt ${attempt}/${retries})`);
+                const retryTime = new Date(retryAfter).getTime();
+                if (Number.isFinite(retryTime)) {
+                    return Math.max(500, retryTime - Date.now());
+                }
+            }
+        }
+
+        return Math.min(1000 * Math.pow(2, attempt), 8000);
+    }
+
+    private parsePayload<T>(payload: unknown, context: string): T {
+        if (typeof payload === 'string') {
+            try {
+                return JSON.parse(payload) as T;
+            } catch {
+                throw new Error(`${context} returned invalid JSON.`);
+            }
+        }
+
+        if (payload && typeof payload === 'object') {
+            return payload as T;
+        }
+
+        throw new Error(`${context} returned an unexpected response.`);
+    }
+
+    private extractErrorMessage(error: unknown, context: string) {
+        if (!isAxiosLikeError(error)) {
+            return `${context} failed unexpectedly.`;
+        }
+
+        const status = error.response?.status;
+        const data = error.response?.data;
+        const apiMessage = typeof data === 'string'
+            ? data
+            : (data as Record<string, unknown> | undefined)?.message ??
+            (data as Record<string, unknown> | undefined)?.developerMessage ??
+            (data as Record<string, unknown> | undefined)?.error;
+
+        if (status === 401 || status === 403) {
+            return 'NOAA rejected the request. Check that your API token is valid and active.';
+        }
+
+        if (status === 429) {
+            return 'NOAA rate-limited the request. Please wait a moment and try again.';
+        }
+
+        if (status === 400 && typeof apiMessage === 'string' && apiMessage.trim()) {
+            return `NOAA rejected the request: ${apiMessage.trim()}`;
+        }
+
+        if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+            return `${context} timed out. NOAA may be responding slowly.`;
+        }
+
+        if (typeof apiMessage === 'string' && apiMessage.trim()) {
+            return `${context} failed: ${apiMessage.trim()}`;
+        }
+
+        if (status) {
+            return `${context} failed with HTTP ${status}${error.response?.statusText ? ` ${error.response.statusText}` : ''}.`;
+        }
+
+        return `${context} failed due to a network error.`;
+    }
+
+    private async executeRequest<T>(url: string, context: string): Promise<T> {
+        let lastError: unknown;
+
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
+            try {
+                const response = await axios.get(url, {
+                    headers: this.headers,
+                    timeout: REQUEST_TIMEOUT_MS
+                });
+                return this.parsePayload<T>(response.data, context);
+            } catch (error) {
+                lastError = error;
+                if (!this.isRetryableError(error) || attempt === MAX_RETRIES - 1) {
+                    throw new Error(this.extractErrorMessage(error, context));
+                }
+
+                const delay = this.getRetryDelayMs(attempt, error);
+                console.warn(`[RainfallDownloader] NOAA request retry ${attempt + 1}/${MAX_RETRIES} in ${delay}ms.`);
                 await this.wait(delay);
             }
         }
+
+        throw new Error(this.extractErrorMessage(lastError, context));
     }
 
-    async request<T>(endpoint: string, params: Record<string, any> = {}): Promise<T> {
-        // Construct full URL with params for the target service
-        const url = new URL(`${BASE_NOAA}${endpoint}`, window.location.origin);
+    private async request<T>(endpoint: string, params: Record<string, unknown> = {}, context = 'NOAA request'): Promise<T> {
+        this.ensureToken();
 
-        Object.keys(params).forEach(key => {
-            const val = params[key];
-            if (Array.isArray(val)) {
-                val.forEach(v => url.searchParams.append(key, v));
-            } else if (val !== undefined && val !== null) {
-                url.searchParams.append(key, String(val));
-            }
-        });
+        const targetUrl = this.buildUrl(endpoint, params);
 
-        const fullTargetUrl = url.toString();
-
-        // In dev mode, use Vite proxy (no CORS issues)
         if (import.meta.env.DEV) {
-            try {
-                const res = await this.fetchWithRetry(fullTargetUrl, {
-                    headers: this.headers,
-                    timeout: 15000
-                });
-                return res.data;
-            } catch (error) {
-                console.error('[RainfallDownloader] Dev proxy request failed:', error);
-                throw error;
-            }
+            return this.executeRequest<T>(targetUrl, context);
         }
 
-        // Production: Try CORS proxies
-        // Note: Most free CORS proxies don't properly forward custom headers like 'token'
-        // corsproxy.io claims to forward headers; thingproxy is often reliable
-        const proxies = [
-            `https://corsproxy.io/?${encodeURIComponent(fullTargetUrl)}`,
-            `https://thingproxy.freeboard.io/fetch/${fullTargetUrl}`,
-            `https://api.allorigins.win/raw?url=${encodeURIComponent(fullTargetUrl)}`
+        const proxyUrls = [
+            `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+            `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
         ];
 
-        let lastError: any;
-
-        for (const proxyUrl of proxies) {
+        let lastError: Error | null = null;
+        for (const proxyUrl of proxyUrls) {
             try {
-                console.log(`[RainfallDownloader] Attempting via proxy: ${proxyUrl.substring(0, 60)}...`);
-                const res = await this.fetchWithRetry(proxyUrl, {
-                    headers: this.headers,
-                    timeout: 15000
-                });
-                console.log(`[RainfallDownloader] Proxy success!`);
-                return res.data;
-            } catch (error: any) {
-                console.warn(`[RainfallDownloader] Proxy failed: ${proxyUrl.substring(0, 60)}...`, error?.message);
-                lastError = error;
-
-                // Check for auth errors - indicates proxy forwarded request but token wasn't accepted
-                const status = error?.response?.status;
-                if (status === 401 || status === 403) {
-                    console.warn('[RainfallDownloader] Auth failed - proxy may not forward headers properly');
-                }
+                return await this.executeRequest<T>(proxyUrl, context);
+            } catch (error) {
+                lastError = error instanceof Error ? error : new Error(String(error));
+                console.warn(`[RainfallDownloader] NOAA proxy attempt failed for ${context}.`, lastError.message);
             }
         }
 
-        // Provide helpful error message
-        const errorMessage = 'All CORS proxies failed. NOAA API requires authenticated requests that most free CORS proxies cannot handle. ' +
-            'Please run the app locally (npm run dev) for full functionality, or consider deploying your own CORS proxy.';
-        console.error(`[RainfallDownloader] ${errorMessage}`);
-
-        throw new Error(lastError?.message || errorMessage);
+        throw new Error(
+            `${lastError?.message ?? 'NOAA request failed.'} Browser-side NOAA access is unreliable through public CORS proxies. ` +
+            'Running locally with `npm run dev` or deploying a server-side NOAA proxy is the most reliable option.'
+        );
     }
 
-    async findStationsByCity(city: string, limit = 20, buffer = 0.25, options: DataQueryOptions = {}): Promise<Station[]> {
+    async findStationsByCity(city: string, limit = DEFAULT_SEARCH_LIMIT, buffer = DEFAULT_SEARCH_BUFFER, options: DataQueryOptions = {}): Promise<Station[]> {
+        if (!city.trim()) return [];
+
         const datasetId = this.normalizeDatasetId(options.datasetId);
         const datatypes = this.normalizeDatatypes(options.datatypes, datasetId);
-
-        const cacheKey = `search_${city}_${limit}_${buffer}_${datasetId}_${datatypes.join(',')}`;
+        const cacheKey = `search_${city.trim().toLowerCase()}_${limit}_${buffer}_${datasetId}_${datatypes.join(',')}`;
         const cached = getCache<Station[]>(cacheKey);
         if (cached) return cached;
 
-        let lat: string, lon: string;
+        const coords = await geocodeCity(city.trim());
+        if (!coords) return [];
 
-        try {
-            console.log(`[RainfallDownloader] Geocoding city: ${city}`);
-            const coords = await geocodeCity(city);
-            if (!coords) return [];
-            lat = coords.lat.toString();
-            lon = coords.lon.toString();
-        } catch (error) {
-            console.warn('[RainfallDownloader] Geocoding failed', error);
-            return [];
+        const stations = await this.findStationsByCoords(coords.lat, coords.lon, limit, buffer, options);
+        setCache(cacheKey, stations);
+        return stations;
+    }
+
+    async findStationsByCoords(lat: number, lon: number, limit = DEFAULT_SEARCH_LIMIT, buffer = DEFAULT_SEARCH_BUFFER, options: DataQueryOptions = {}): Promise<Station[]> {
+        if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+            throw new Error('Latitude and longitude must be valid decimal degrees.');
         }
 
-        const latNum = parseFloat(lat);
-        const lonNum = parseFloat(lon);
-
-        return this.findStationsByCoords(latNum, lonNum, limit, buffer, options);
-    }
-
-    async findStationsByCoords(lat: number, lon: number, limit = 20, buffer = 0.25, options: DataQueryOptions = {}): Promise<Station[]> {
         const datasetId = this.normalizeDatasetId(options.datasetId);
         const datatypes = this.normalizeDatatypes(options.datatypes, datasetId);
-
-        const cacheKey = `search_coords_${lat}_${lon}_${limit}_${buffer}_${datasetId}_${datatypes.join(',')}`;
+        const normalizedLimit = this.normalizeLimit(limit);
+        const normalizedBuffer = this.normalizeBuffer(buffer);
+        const cacheKey = `search_coords_${lat.toFixed(4)}_${lon.toFixed(4)}_${normalizedLimit}_${normalizedBuffer}_${datasetId}_${datatypes.join(',')}`;
         const cached = getCache<Station[]>(cacheKey);
         if (cached) return cached;
 
-        // extent order: minLat, minLon, maxLat, maxLon
-        const extent = `${lat - buffer},${lon - buffer},${lat + buffer},${lon + buffer}`;
-
-        // If no specific datatypes were requested, we don't filter by the default one
-        // to ensure we get maximum station coverage.
+        const extent = `${lat - normalizedBuffer},${lon - normalizedBuffer},${lat + normalizedBuffer},${lon + normalizedBuffer}`;
         const shouldFilterDatatypes = options.datatypes && options.datatypes.length > 0;
 
-        const data: any = await this.request('/stations', {
+        const data = await this.request<NoaaEnvelope<NoaaStationRecord>>('/stations', {
             datasetid: datasetId,
             datatypeid: shouldFilterDatatypes ? datatypes : undefined,
-            limit,
+            limit: normalizedLimit,
             extent
-        });
+        }, 'NOAA station search');
 
-        const stations: Station[] = (data.results || []).map((st: any) => ({
-            id: st.id,
-            source: 'NOAA_CDO',
-            name: st.name || '',
-            latitude: st.latitude,
-            longitude: st.longitude,
-            elevation: st.elevation,
-            mindate: st.mindate,
-            maxdate: st.maxdate,
-            datacoverage: st.datacoverage,
-            metadata: {
-                datacoverage: st.datacoverage,
-                elevationUnit: st.elevationUnit
-            }
-        }));
+        if (data.results !== undefined && !Array.isArray(data.results)) {
+            throw new Error('NOAA station search returned an invalid payload.');
+        }
+
+        const deduped = new Map<string, Station>();
+        (data.results ?? [])
+            .map((station): Station | null => {
+                if (!station.id || !isFiniteNumber(station.latitude) || !isFiniteNumber(station.longitude)) {
+                    return null;
+                }
+
+                return {
+                    id: station.id,
+                    source: 'NOAA_CDO',
+                    name: station.name || station.id,
+                    latitude: station.latitude,
+                    longitude: station.longitude,
+                    elevation: isFiniteNumber(station.elevation) ? station.elevation : undefined,
+                    mindate: station.mindate,
+                    maxdate: station.maxdate,
+                    datacoverage: isFiniteNumber(station.datacoverage) ? station.datacoverage : undefined,
+                    metadata: {
+                        datacoverage: station.datacoverage,
+                        elevationUnit: station.elevationUnit
+                    }
+                };
+            })
+            .filter((station): station is Station => station !== null)
+            .sort((left, right) => {
+                const coverageDelta = (right.datacoverage ?? 0) - (left.datacoverage ?? 0);
+                if (coverageDelta !== 0) return coverageDelta;
+
+                const leftDistance = Math.abs(left.latitude - lat) + Math.abs(left.longitude - lon);
+                const rightDistance = Math.abs(right.latitude - lat) + Math.abs(right.longitude - lon);
+                return leftDistance - rightDistance;
+            })
+            .forEach(station => {
+                if (!deduped.has(station.id)) {
+                    deduped.set(station.id, station);
+                }
+            });
+
+        const stations = Array.from(deduped.values());
 
         setCache(cacheKey, stations);
         return stations;
@@ -331,80 +520,124 @@ export class NoaaService implements DataSource {
         return `${datasetId}:${rawId}`;
     }
 
-    async getAvailableDataTypes(stationId: string, options: DataQueryOptions = {}): Promise<import('../types').DataType[]> {
+    async getAvailableDataTypes(stationId: string, options: DataQueryOptions = {}): Promise<DataType[]> {
         const datasetId = this.normalizeDatasetId(options.datasetId);
         const cacheKey = `datatypes_${stationId}_${datasetId}`;
-        const cached = getCache<import('../types').DataType[]>(cacheKey);
+        const cached = getCache<DataType[]>(cacheKey);
         if (cached) return cached;
 
         const queryStationId = this.resolveStationId(datasetId, stationId);
 
-        const data: any = await this.request('/datatypes', {
+        const data = await this.request<NoaaEnvelope<NoaaDataTypeRecord>>('/datatypes', {
             datasetid: datasetId,
             stationid: queryStationId,
-        });
+        }, `NOAA datatype lookup for ${stationId}`);
 
-        const types = (data.results || []).map((t: any) => ({
-            id: t.id,
-            name: t.name,
-            mindate: t.mindate,
-            maxdate: t.maxdate,
-            datacoverage: t.datacoverage
-        }));
+        if (data.results !== undefined && !Array.isArray(data.results)) {
+            throw new Error('NOAA datatype lookup returned an invalid payload.');
+        }
+
+        const types = Array.from(new Map(
+            (data.results ?? [])
+                .filter((record): record is Required<Pick<NoaaDataTypeRecord, 'id' | 'name' | 'mindate' | 'maxdate'>> & NoaaDataTypeRecord => (
+                    Boolean(record.id && record.name && record.mindate && record.maxdate)
+                ))
+                .map(record => [record.id, {
+                    id: record.id,
+                    name: record.name,
+                    mindate: record.mindate,
+                    maxdate: record.maxdate,
+                    datacoverage: isFiniteNumber(record.datacoverage) ? record.datacoverage : 0
+                } satisfies DataType])
+        ).values());
 
         setCache(cacheKey, types);
         return types;
     }
 
-    async fetchData({ stationIds, startDate, endDate, units = 'standard', datatypes = ['PRCP'], datasetId }: import('../types').FetchDataParams & DataQueryOptions): Promise<import('../types').UnifiedTimeSeries[]> {
+    async fetchData({ stationIds, startDate, endDate, units = 'standard', datatypes = ['PRCP'], datasetId }: FetchDataParams & DataQueryOptions): Promise<UnifiedTimeSeries[]> {
+        if (!stationIds || stationIds.length === 0) return [];
+
         const normalizedDataset = this.normalizeDatasetId(datasetId);
         const normalizedDatatypes = this.normalizeDatatypes(datatypes, normalizedDataset);
+        const normalizedStartDate = this.normalizeDate(startDate, 'Start date');
+        const normalizedEndDate = this.normalizeDate(endDate, 'End date');
 
-        const promises = stationIds.map(async (sid) => {
+        if (normalizedStartDate > normalizedEndDate) {
+            throw new Error('Start date must be on or before end date.');
+        }
+
+        const uniqueStationIds = Array.from(new Set(stationIds.filter(Boolean)));
+        const promises = uniqueStationIds.map(async (sid) => {
             const id = this.resolveStationId(normalizedDataset, sid);
-            const cacheKey = `data_${sid}_${startDate}_${endDate}_${units}_${normalizedDataset}_${normalizedDatatypes.join(',')}`;
-            const cached = getCache<import('../types').UnifiedTimeSeries[]>(cacheKey);
+            const cacheKey = `data_${sid}_${normalizedStartDate}_${normalizedEndDate}_${units}_${normalizedDataset}_${normalizedDatatypes.join(',')}`;
+            const cached = getCache<UnifiedTimeSeries[]>(cacheKey);
             if (cached) return cached;
 
-            const limit = 1000;
             let offset = 1;
-            let allResults: any[] = [];
+            const allResults: NoaaDataRecord[] = [];
 
-            while (true) {
-                const params: any = {
+            for (let page = 0; page < MAX_PAGE_REQUESTS; page += 1) {
+                const data = await this.request<NoaaEnvelope<NoaaDataRecord>>('/data', {
                     datasetid: normalizedDataset,
                     stationid: id,
-                    startdate: startDate,
-                    enddate: endDate,
+                    startdate: normalizedStartDate,
+                    enddate: normalizedEndDate,
                     units: units === 'metric' ? 'metric' : 'standard',
-                    limit,
+                    limit: MAX_PAGE_SIZE,
                     offset,
-                    datatypeid: normalizedDatatypes // Array handling in request() covers this
-                };
+                    datatypeid: normalizedDatatypes
+                }, `NOAA data download for ${sid}`);
 
-                const data: any = await this.request('/data', params);
-                const results = data.results || [];
-                allResults = [...allResults, ...results];
+                if (data.results !== undefined && !Array.isArray(data.results)) {
+                    throw new Error(`NOAA data download for ${sid} returned an invalid payload.`);
+                }
 
-                if (results.length < limit) break;
-                offset += limit;
-                if (offset > 10000) break; // safety
+                const results = data.results ?? [];
+                allResults.push(...results);
+
+                const totalCount = data.metadata?.resultset?.count;
+                const reachedLastPage = results.length < MAX_PAGE_SIZE;
+                const reachedKnownTotal = Number.isFinite(totalCount) && allResults.length >= (totalCount as number);
+
+                if (results.length === 0 || reachedLastPage || reachedKnownTotal) break;
+                offset += results.length;
             }
 
-            const data: import('../types').UnifiedTimeSeries[] = allResults.map((r: any) => ({
-                timestamp: r.date,
-                value: r.value,
-                interval: normalizedDataset === 'PRECIP_HLY' ? 60 : 1440, // Crude approx: HLY is hourly, others daily
-                source: 'NOAA_CDO' as const,
-                stationId: sid,
-                parameter: r.datatype,
-                qualityFlag: r.attributes, // Store raw attributes string
-                // Map legacy fields for temporary compat if needed by consumers using UnifiedTimeSeries as generic bucket
-                date: r.date,
-                datatype: r.datatype,
-                originalValue: r.value,
-                originalUnits: units // 'metric' or 'standard'
-            })).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+            const data = Array.from(new Map(
+                allResults
+                    .map(record => {
+                        const timestamp = record.date ? toIsoTimestamp(record.date) : null;
+                        const parameter = typeof record.datatype === 'string' && record.datatype.trim()
+                            ? record.datatype
+                            : this.getDefaultDatatype(normalizedDataset);
+                        const value = typeof record.value === 'string' ? Number(record.value) : record.value;
+
+                        if (!timestamp || !Number.isFinite(value)) {
+                            return null;
+                        }
+
+                        return {
+                            timestamp,
+                            value: value as number,
+                            interval: normalizedDataset === 'PRECIP_HLY' ? 60 : 1440,
+                            source: 'NOAA_CDO' as const,
+                            stationId: sid,
+                            parameter,
+                            qualityFlag: typeof record.attributes === 'string' ? record.attributes : undefined,
+                            date: timestamp,
+                            datatype: parameter,
+                            originalValue: value as number,
+                            originalUnits: units
+                        } as UnifiedTimeSeries;
+                    })
+                    .filter((record): record is UnifiedTimeSeries => record !== null)
+                    .map(record => [`${record.stationId}|${record.parameter}|${record.timestamp}`, record])
+            ).values()).sort((a, b) => {
+                const timestampDelta = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+                if (timestampDelta !== 0) return timestampDelta;
+                return a.parameter.localeCompare(b.parameter);
+            });
 
             setCache(cacheKey, data);
             return data;
