@@ -4,112 +4,89 @@
 [![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Rainfall Downloader is a lightweight web app for exploring and exporting precipitation data from NOAA's Climate Data Online (CDO) API. Use the interactive map to find weather stations, visualize availability, and pull ready-to-use CSV or SWMM time series for your modeling workflows. A roadmap for additional providers is included below so you can choose the right source for your use case.
+Rainfall Downloader is a web app for finding stations (or virtual grid points), charting precipitation-related series, and exporting CSV/SWMM files for modeling workflows.
 
-## Overview
-- Search for NOAA weather stations by city, ZIP code, or map navigation.
-- Inspect station metadata and data-type availability timelines before downloading.
-- Fetch precipitation, snowfall depth, or snow water equivalent records for one or more stations and visualize them immediately.
-- Export downloads as CSV or SWMM-formatted time series for hydraulic models.
-- Pull gridded HRRR model precipitation/forecast data for virtual point locations.
+## Live providers
 
-## Getting Started
+- `NOAA CDO` (token required): station datasets including `GHCND`, `PRECIP_HLY`, `GSOM`, and `GSOY`
+- `USGS NWIS` (no token): station search and IV time-series endpoints
+- `Synoptic Data` (token required): station metadata and timeseries
+- `NOAA HRRR` (no token): gridded analysis/forecast data through `/api/hrrr`
+
+## Getting started
 
 ### Prerequisites
-- Node.js 20+ and npm
-- A NOAA CDO API token (free from the [NCEI CDO portal](https://www.ncdc.noaa.gov/cdo-web/token))
 
-### Install dependencies
+- Node.js 20+ and npm
+- Optional provider credentials:
+  - NOAA CDO token: <https://www.ncdc.noaa.gov/cdo-web/token>
+  - Synoptic token: <https://developers.synopticdata.com/>
+
+### Install
+
 ```bash
 npm install
 ```
 
-### Configure your API token
-1. Start the app (see below) and open the **Settings** menu in the header.
-2. Paste your NOAA API token and choose your preferred units (Standard or Metric).
-3. Preferences are stored in `localStorage`; you can update or clear them at any time.
+### Run locally
 
-### Get free provider tokens (for current and upcoming sources)
-- **NOAA CDO (live in-app):** Request a token from the [NCEI CDO portal](https://www.ncdc.noaa.gov/cdo-web/token), then paste it into **Settings**.
-- **NASA GPM IMERG via Earthdata (roadmap):** Create an [Earthdata Login](https://urs.earthdata.nasa.gov/), approve the "GPM IMERG" application when prompted, and generate an app-specific token under **Applications → Authorized Apps**.
-- **Meteostat (roadmap):** No token required for the public API. Keep a contact email handy to set the `User-Agent` header if your organization requires it.
-- **OpenWeatherMap (roadmap):** Sign up for a free account, create an API key under **My API keys**, and confirm you are on the "Free" tier (1,000 calls/day at 1 Hz).
-
-### Run the app locally
 ```bash
 npm run dev
 ```
-The dev server runs at http://localhost:5173/rainfalldownload/. Vite proxies NOAA and Nominatim requests during development, so API calls work without extra configuration.
-HRRR requests (made to `/api/hrrr`) are proxied to `http://localhost:3000` by default, or to a custom backend if the `HRRR_PROXY_TARGET` environment variable is set.
+
+The dev server runs at <http://localhost:5173/rainfalldownload/>.
+
+### Configure provider credentials
+
+1. Open **Settings** in the app header.
+2. Select a provider.
+3. Enter credentials if that provider requires them (NOAA, Synoptic).
+4. Preferences are stored in `localStorage`.
 
 ## Usage
-1. **Find stations:** Use the search panel to locate stations by place name/ZIP or pan the map. Results appear as markers and in the station list.
-2. **Check availability:** Select stations to view their data-type timelines and valid date ranges before requesting data.
-3. **Fetch data:** Choose a dataset (daily GHCND, hourly PRECIP_HLY, or GSOM/GSOY summaries), a date range, units, and one or more datatypes (e.g., PRCP, SNOW, SNWD) and click **Fetch Rainfall Data**.
-4. **Export:** Download results as CSV or SWMM format from the export buttons beneath the chart.
 
-## Providers, resolution, and limitations
-Rainfall Downloader currently ships with NOAA CDO and NOAA HRRR, with additional sources in the roadmap so you can balance coverage, latency, and credentials.
+1. Pick a provider in **Settings** or the provider selector.
+2. Search by city/ZIP, coordinates, or map interaction (capabilities vary by provider).
+3. Select stations (or an HRRR point), choose date range and data types.
+4. Click **Fetch Rainfall Data**.
+5. Export results as CSV or SWMM.
 
-| Provider | Spatial / Temporal resolution | Latency | Credentials | Known limitations |
+## Provider notes
+
+| Provider | Search mode | Typical cadence | Credentials | Notes |
 | --- | --- | --- | --- | --- |
-| **NOAA CDO (live)** | Station locations; daily/hourly precipitation depending on station | ~24 hours for most stations | NOAA CDO token | Station availability varies; gaps in historical records; per-token daily request limits |
-| **NOAA HRRR (beta)** | 3 km gridded; hourly analysis/forecast | Hourly updates | None | Rolling ~48-hour archive; forecast horizon ~18 hours; requires `/api/hrrr` proxy |
-| **NASA GPM IMERG (roadmap)** | 0.1° gridded; 30-minute and daily | ~12–24 hours after observation | Earthdata Login with app token | Best-effort gauge adjustment; coastal bias in some tiles; rolling retention differs by product (Late vs. Final) |
-| **Meteostat (roadmap)** | Weather stations; hourly and daily | ~1–3 hours behind real time | No token required | Coverage densest in Europe/NA; some stations drop to daily only; rate limits apply to bulk pulls |
-| **OpenWeatherMap (roadmap)** | Point queries; 1-hour precip from current/forecast; aggregated daily | Minutes for current/forecast; daily archives may lag | API key (Free tier supported) | Free tier call caps; forecast skill varies by region; archived history is limited without paid plan |
+| NOAA CDO | Station + spatial | Daily/hourly, dataset-dependent | NOAA token | Supports dataset/datatype filters and station availability timelines. |
+| USGS NWIS | Station + spatial | Near real-time IV | None | Focused on NWIS parameter codes such as precipitation and discharge. |
+| Synoptic Data | Station + spatial | Provider/network dependent | Synoptic token | Data type names reflect Synoptic sensor variables. |
+| NOAA HRRR | Spatial point only | Hourly runs | None | Uses `/api/hrrr` proxy and a backend HRRR service. |
 
-### Units, coverage, and data nuances
-- **NOAA CDO:** Returns precipitation in tenths of millimeters (metric) or hundredths of inches (standard) per station; set the unit preference in **Settings**.
-- **NOAA HRRR:** Gridded model output in metric units; precipitation uses accumulated millimeters.
-- **NASA GPM IMERG:** Delivers gridded millimeters; conversion to inches will be handled in-app when added.
-- **Meteostat:** Provides metric units by default; convert to inches if needed when exporting.
-- **OpenWeatherMap:** Returns millimeters for `rain`/`snow` fields; daily aggregates vary by endpoint (e.g., One Call 3.0 vs. history API).
+### NOAA dataset and datatype behavior
 
-### Dataset and datatype selection
-- Pick a CDO dataset in the **Query Parameters** pane: daily `GHCND`, hourly `PRECIP_HLY`, or summary products `GSOM`/`GSOY`.
-- Check one or more datatypes to include in downloads; common precipitation and snow identifiers like `PRCP`, `SNOW`, `SNWD`, `WESD`, and `WESF` are whitelisted in the UI and passed directly to NOAA.
-- Station search, availability lookups, and caching all respect the chosen dataset/datatype combination to avoid collisions.
-
-### Provider selection matrix
-Use this quick guide to pick the right source for your scenario:
-
-| Use case | Recommended provider | Why |
-| --- | --- | --- |
-| Hydrologic modeling near a known gauge | NOAA CDO | Station-based quality control and long archives |
-| Short-term forecast forcing at a point | NOAA HRRR | Rapid-refresh gridded analysis/forecast |
-| Broad spatial coverage over ungauged basins | NASA GPM IMERG | Global gridded product with consistent spatial resolution |
-| Rapid updates for recent events in Europe/NA | Meteostat | Frequent refresh with dense regional station network |
-| Quick-look current/forecast precipitation | OpenWeatherMap | Simple point queries with low-latency current/forecast data |
-
-### Roadmap and onboarding
-- **Current:** NOAA CDO download, visualization, and export are supported today.
-- **Planned:** NASA GPM IMERG, Meteostat, and OpenWeatherMap connectors with per-source unit conversion and coverage indicators inside the app.
-- **Getting ready:** Acquire the free tokens listed above now so you can plug them in as each connector ships.
-
-## Deployment
-- Build the production bundle with `npm run build`; preview locally with `npm run preview`.
-- The Vite config sets `base: '/rainfalldownload/'` for GitHub Pages. If you deploy under a different path, update `base` in `vite.config.ts` to match your hosting URL.
-- All NOAA requests occur client-side; ensure your deployment domain is allowed to call the CDO API and remind users to supply their own tokens.
+- Supported datasets: `GHCND`, `PRECIP_HLY`, `GSOM`, `GSOY`
+- NOAA datatype whitelist includes: `PRCP`, `SNOW`, `SNWD`, `WESD`, `WESF`, `HPCP`, `QPCP`
+- For NOAA, dataset/datatype choices are included in cache keys to avoid stale mixups.
 
 ## HRRR proxy setup
-HRRR requests are routed through `/api/hrrr` to avoid CORS restrictions and to normalize model output. The repo includes a serverless-compatible handler in `api/hrrr.ts` that validates query input and proxies requests to `services/hrrr_virtual_api` (FastAPI + Herbie), which extracts point data from HRRR files and returns the same `stationId + series` shape used by the frontend.
 
-**Recommended environment variables**
-- `HRRR_USER_AGENT`: forwarded by the proxy as `X-HRRR-User-Agent` for downstream clients that require a descriptive User-Agent header.
-- `HRRR_SERVICE_URL`: URL of the Python HRRR virtual API endpoint (default: `http://127.0.0.1:8000/hrrr`).
-- `HRRR_PROXY_TARGET`: For local development with Vite, set this to the URL where your serverless runtime is running (e.g., `http://localhost:3000` for `vercel dev`). The Vite dev server proxies `/api/hrrr` requests to this target.
+HRRR frontend requests go to `/api/hrrr`. That proxy validates input and forwards requests to the Python service in `services/hrrr_virtual_api`.
 
-**Deployment steps**
-1. Deploy the Vite frontend as usual.
-2. Run/deploy `services/hrrr_virtual_api` (FastAPI service) where your API layer can reach it.
-3. Deploy the `/api/hrrr` handler to your serverless/edge platform.
-4. Configure the environment variables above in your deployment settings.
+Recommended environment variables:
 
-## Key Features at a Glance
-- Interactive Leaflet map for spatial station selection.
-- Station list with quick toggles and selection persistence.
-- Availability timelines to avoid empty queries.
-- Status center for background task feedback.
-- Dual-unit support and dark mode preference.
-- CSV and SWMM exports for downstream modeling.
+- `HRRR_USER_AGENT`: forwarded as `X-HRRR-User-Agent`
+- `HRRR_SERVICE_URL`: backend endpoint (default: `http://127.0.0.1:8000/hrrr`)
+- `HRRR_PROXY_TARGET`: local serverless target used by Vite dev proxy (default: `http://localhost:3000`)
+
+## Deployment
+
+- Build: `npm run build`
+- Preview: `npm run preview`
+- Vite base path defaults to `/rainfalldownload/` (see `vite.config.ts`).
+- If deploying under a different path, update `base` in `vite.config.ts`.
+
+## Key features
+
+- Multi-provider data access with per-provider credentials/settings
+- Interactive map and station/point selection
+- Availability and data-type aware workflows
+- CSV and SWMM export
+- Light/dark theme + unit preferences

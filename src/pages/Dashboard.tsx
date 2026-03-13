@@ -147,6 +147,7 @@ export function Dashboard() {
     };
 
     const setVirtualSelection = (lat: number, lon: number) => {
+        beginSearchRequest();
         const nextStation = buildVirtualStation(lat, lon);
         setVirtualStation(nextStation);
         setStations([nextStation]);
@@ -264,6 +265,7 @@ export function Dashboard() {
     }, [preferences.providerId]);
 
     useEffect(() => {
+        beginSearchRequest();
         setCoordinateError(null);
         setCoordinateInput({ lat: '', lon: '' });
         setVirtualStation(null);
@@ -275,12 +277,20 @@ export function Dashboard() {
     }, [isPointSelectionMode, preferences.providerId]);
 
     const fetchedTrackingRef = useRef<Set<string>>(new Set());
+    const activeSearchRequestRef = useRef(0);
 
     useEffect(() => {
         fetchedTrackingRef.current.clear();
         setStationAvailability({});
         setAvailabilityLoading({});
     }, [datasetId]);
+
+    const beginSearchRequest = () => {
+        activeSearchRequestRef.current += 1;
+        return activeSearchRequestRef.current;
+    };
+
+    const isLatestSearchRequest = (requestId: number) => activeSearchRequestRef.current === requestId;
 
     // --- Search Logic ---
 
@@ -331,6 +341,7 @@ export function Dashboard() {
     };
 
     const handleCoordinateClear = () => {
+        beginSearchRequest();
         setCoordinateInput({ lat: '', lon: '' });
         setCoordinateError(null);
         setVirtualStation(null);
@@ -344,16 +355,14 @@ export function Dashboard() {
 
     const performTextSearch = async (query: string, silent = false) => {
         if (!dataSource || !query.trim()) return;
-
-        // If strict capability checks are needed, add here.
-        // Assuming dataSource is valid if we are here.
+        const requestId = beginSearchRequest();
 
         if (!silent) setSearchLoading(true);
 
         try {
             const results = await dataSource.findStationsByCity(query, undefined, undefined, { datasetId, datatypes: selectedDataTypes });
+            if (!isLatestSearchRequest(requestId)) return;
 
-            // Calculate center
             let center: [number, number] | undefined;
             if (results.length > 0) {
                 const lat = results.reduce((sum, s) => sum + s.latitude, 0) / results.length;
@@ -363,27 +372,31 @@ export function Dashboard() {
 
             handleStationsFound(results, center);
             setLastSearchType('text');
+            setLastSearchCoords(null);
         } catch (error) {
-            if (!silent) searchError(error, 'Failed to search stations.');
+            if (!silent && isLatestSearchRequest(requestId)) searchError(error, 'Failed to search stations.');
         } finally {
-            if (!silent) setSearchLoading(false);
+            if (!silent && isLatestSearchRequest(requestId)) setSearchLoading(false);
         }
     };
 
     const performCoordsSearch = async (lat: number, lon: number, silent = false) => {
         if (!dataSource || !supportsDataTypeLookup) return;
+        const requestId = beginSearchRequest();
 
         if (!silent) setSearchLoading(true);
         try {
             const results = await dataSource.findStationsByCoords(lat, lon, undefined, undefined, { datasetId, datatypes: selectedDataTypes });
+            if (!isLatestSearchRequest(requestId)) return;
+
             handleStationsFound(results, [lat, lon]);
             setLastSearchType('coords');
             setLastSearchCoords([lat, lon]);
             if (!silent) setSearchQuery(`Location (${lat.toFixed(2)}, ${lon.toFixed(2)})`);
         } catch (error) {
-            if (!silent) searchError(error, 'Failed to find stations near location.');
+            if (!silent && isLatestSearchRequest(requestId)) searchError(error, 'Failed to find stations near location.');
         } finally {
-            if (!silent) setSearchLoading(false);
+            if (!silent && isLatestSearchRequest(requestId)) setSearchLoading(false);
         }
     };
 

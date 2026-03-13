@@ -4,7 +4,10 @@ import { NoaaService } from './noaa';
 
 vi.mock('axios', () => ({
     default: {
-        get: vi.fn()
+        get: vi.fn(),
+        create: vi.fn(() => ({
+            get: vi.fn()
+        }))
     }
 }));
 
@@ -90,7 +93,7 @@ describe('NoaaService', () => {
 
         expect(mockedAxios.get).toHaveBeenCalledTimes(2);
         expect(data).toHaveLength(1001);
-        expect(data[data.length - 1]?.value).toBe(12.5);
+        expect(data.some(record => record.timestamp.startsWith('2023-02-11T00:00:00') && record.value === 12.5)).toBe(true);
     });
 
     it('rejects downloads when the NOAA token is missing', async () => {

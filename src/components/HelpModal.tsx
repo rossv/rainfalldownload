@@ -62,63 +62,53 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                                 Welcome to the Rainfall Downloader!
                             </p>
                             <p>
-                                Fetch, visualize, and export precipitation records. NOAA CDO works today; additional providers are on the roadmap so you can pick the source that matches your coverage, latency, and credential needs.
+                                Fetch, visualize, and export precipitation records from multiple live providers: NOAA CDO, USGS NWIS, Synoptic Data, and NOAA HRRR.
                             </p>
 
                             <div className="space-y-4">
                                 <section>
                                     <h3 className="text-foreground font-semibold mb-2">Core workflow</h3>
                                     <ol className="list-decimal ml-5 space-y-1">
-                                        <li>Use <strong>Find Stations</strong> to search by city/ZIP or pan the map, then select station markers.</li>
-                                        <li>Review availability timelines to confirm date ranges and data types (e.g., PRCP).</li>
-                                        <li>Choose date range, units (Standard/Metric), and data types, then click <strong>Fetch Rainfall Data</strong>.</li>
+                                        <li>Select a provider and enter credentials in <strong>Settings</strong> if needed.</li>
+                                        <li>Use <strong>Find Stations</strong> to search by city/ZIP or map. For HRRR, choose a map point.</li>
+                                        <li>Review available datatypes and date ranges before requesting data.</li>
+                                        <li>Choose date range and units, then click <strong>Fetch Rainfall Data</strong>.</li>
                                         <li>Export the charted results as <strong>CSV</strong> or <strong>SWMM</strong> files.</li>
                                     </ol>
                                 </section>
 
                                 <section className="space-y-2">
-                                    <h3 className="text-foreground font-semibold">Supported & upcoming providers</h3>
+                                    <h3 className="text-foreground font-semibold">Supported providers</h3>
                                     <ul className="list-disc ml-5 space-y-1">
-                                        <li><strong>NOAA CDO (live):</strong> Station-based daily/hourly precipitation; ~24 h latency; requires a free CDO token.</li>
-                                        <li><strong>NOAA HRRR (beta):</strong> Gridded rapid-refresh model; hourly updates; rolling ~48-hour archive with ~18-hour forecast horizon.</li>
-                                        <li><strong>NASA GPM IMERG (roadmap):</strong> 0.1° gridded, 30-min/daily; ~12–24 h latency; requires Earthdata Login token.</li>
-                                        <li><strong>Meteostat (roadmap):</strong> Station hourly/daily; ~1–3 h latency; no token; best coverage in Europe/NA.</li>
-                                        <li><strong>OpenWeatherMap (roadmap):</strong> Point current/forecast hourly precip; minute-level latency; free API key; daily archives limited.</li>
-                                    </ul>
-                                    <p className="text-xs">Known limits: per-token request caps (NOAA), coastal bias in some IMERG tiles, Meteostat station gaps, and OWM free-tier call limits.</p>
-                                </section>
-
-                                <section className="space-y-2">
-                                    <h3 className="text-foreground font-semibold">Get free tokens</h3>
-                                    <ul className="list-disc ml-5 space-y-1">
-                                        <li><strong>NOAA CDO:</strong> Request a token at <a className="text-primary hover:underline" href="https://www.ncdc.noaa.gov/cdo-web/token" target="_blank" rel="noreferrer">NCEI CDO</a>, then paste it into <strong>Settings</strong>.</li>
-                                        <li><strong>NASA Earthdata:</strong> Create an <a className="text-primary hover:underline" href="https://urs.earthdata.nasa.gov/" target="_blank" rel="noreferrer">Earthdata Login</a>, approve the GPM IMERG app, and generate an app-specific token.</li>
-                                        <li><strong>Meteostat:</strong> No key required; keep a contact email ready for the `User-Agent` header if requested.</li>
-                                        <li><strong>OpenWeatherMap:</strong> Sign up, create a key under <em>My API keys</em>, and verify the free-tier limits (1k calls/day at 1 Hz).</li>
+                                        <li><strong>NOAA CDO:</strong> Station datasets (`GHCND`, `PRECIP_HLY`, `GSOM`, `GSOY`), token required.</li>
+                                        <li><strong>USGS NWIS:</strong> Real-time/historical USGS station data, no token required.</li>
+                                        <li><strong>Synoptic Data:</strong> Mesonet station metadata/timeseries, token required.</li>
+                                        <li><strong>NOAA HRRR:</strong> Gridded rapid-refresh model via `/api/hrrr`, no token required.</li>
                                     </ul>
                                 </section>
 
                                 <section className="space-y-2">
-                                    <h3 className="text-foreground font-semibold">Units, resolution, and latency</h3>
+                                    <h3 className="text-foreground font-semibold">Credentials and setup links</h3>
                                     <ul className="list-disc ml-5 space-y-1">
-                                        <li><strong>Units:</strong> NOAA returns tenths of mm (metric) or hundredths of inches (standard). IMERG/Meteostat use mm; OWM `rain`/`snow` fields are mm.</li>
-                                        <li><strong>Resolution:</strong> NOAA is station-based; IMERG is 0.1° grids; Meteostat covers stations; OWM is point current/forecast.</li>
-                                        <li><strong>Latency:</strong> NOAA ~24 h; IMERG ~12–24 h (Late/Final); Meteostat ~1–3 h; OWM near-real-time for current/forecast.</li>
+                                        <li><strong>NOAA CDO token:</strong> <a className="text-primary hover:underline" href="https://www.ncdc.noaa.gov/cdo-web/token" target="_blank" rel="noreferrer">NCEI CDO</a></li>
+                                        <li><strong>Synoptic token:</strong> <a className="text-primary hover:underline" href="https://developers.synopticdata.com/" target="_blank" rel="noreferrer">Synoptic Developer Portal</a></li>
+                                        <li><strong>USGS NWIS:</strong> Public endpoints, no key required.</li>
+                                        <li><strong>NOAA HRRR:</strong> Public data, but local/deployed `/api/hrrr` backend is required.</li>
                                     </ul>
                                 </section>
 
                                 <section className="space-y-2">
-                                    <h3 className="text-foreground font-semibold">Pick the right provider</h3>
+                                    <h3 className="text-foreground font-semibold">Provider fit guide</h3>
                                     <ul className="list-disc ml-5 space-y-1">
-                                        <li><strong>Known gauge near your site:</strong> NOAA CDO for QC’d station records and long archives.</li>
-                                        <li><strong>Ungauged basin or gridded forcing:</strong> NASA GPM IMERG for uniform coverage.</li>
-                                        <li><strong>Fast updates in Europe/NA:</strong> Meteostat for frequent refreshes.</li>
-                                        <li><strong>Quick-look or forecasts:</strong> OpenWeatherMap for near-term point precipitation.</li>
+                                        <li><strong>Long historical station rainfall:</strong> NOAA CDO.</li>
+                                        <li><strong>Hydrology and stream/water context:</strong> USGS NWIS.</li>
+                                        <li><strong>Dense mesonet station coverage:</strong> Synoptic Data.</li>
+                                        <li><strong>Gridded short-term forcing:</strong> NOAA HRRR.</li>
                                     </ul>
                                 </section>
 
                                 <div className="bg-muted p-3 rounded-md border border-border text-xs">
-                                    <strong>Tip:</strong> Enter your NOAA token in <strong>Settings</strong> today, and pre-stage Earthdata/OWM credentials so you can plug them in as new connectors land.
+                                    <strong>Tip:</strong> If station search returns no results, confirm the selected provider and token first, then retry with a nearby city or map pan.
                                 </div>
                             </div>
                         </div>
@@ -128,15 +118,24 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                         <div className="space-y-8 relative border-l border-border pl-6 ml-2">
                             <div className="relative">
                                 <div className="absolute -left-[31px] bg-primary rounded-full h-4 w-4 border-2 border-background" />
-                                <h2 className="text-lg font-semibold text-foreground">v2.0.0 - Modern Web App</h2>
+                                <h2 className="text-lg font-semibold text-foreground">v2.1.0 - Multi-Provider Documentation Refresh</h2>
+                                <p className="text-xs text-muted-foreground mb-3">Released: March 2026</p>
+                                <ul className="list-disc ml-4 text-sm text-muted-foreground space-y-1">
+                                    <li>Updated in-app help to reflect all currently supported providers.</li>
+                                    <li>Clarified credential requirements for NOAA and Synoptic.</li>
+                                    <li>Aligned provider guidance with current station/HRRR workflows.</li>
+                                </ul>
+                            </div>
+
+                            <div className="relative">
+                                <div className="absolute -left-[31px] bg-muted-foreground rounded-full h-4 w-4 border-2 border-background" />
+                                <h2 className="text-lg font-semibold text-muted-foreground">v2.0.0 - Modern Web App</h2>
                                 <p className="text-xs text-muted-foreground mb-3">Released: December 2025</p>
                                 <ul className="list-disc ml-4 text-sm text-muted-foreground space-y-1">
-                                    <li>Complete rewrite as a Progressive Web App (PWA) using React & Vite.</li>
-                                    <li>New modern "DesignStorms" inspired UI with Dark Mode.</li>
-                                    <li>Interactive map selection using Leaflet.</li>
-                                    <li>Instant chart visualization.</li>
-                                    <li>Client-side caching of API requests to save quota.</li>
-                                    <li>Github Pages deployment support.</li>
+                                    <li>Complete rewrite as a web app using React and Vite.</li>
+                                    <li>Interactive map selection and modernized UI.</li>
+                                    <li>Client-side caching of API requests to save provider quota.</li>
+                                    <li>GitHub Pages deployment support.</li>
                                 </ul>
                             </div>
 
@@ -170,10 +169,13 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                             </section>
 
                             <section>
-                                <h3 className="text-foreground font-semibold mb-2">Data Source</h3>
-                                <p>
-                                    All weather data is provided by the <a href="https://www.ncdc.noaa.gov/cdo-web/webservices/v2" className="text-primary hover:underline" target="_blank" rel="noreferrer">NOAA National Centers for Environmental Information (NCEI)</a> via their Climate Data Online (CDO) API.
-                                </p>
+                                <h3 className="text-foreground font-semibold mb-2">Data Sources</h3>
+                                <ul className="list-disc ml-5 space-y-1">
+                                    <li><a href="https://www.ncdc.noaa.gov/cdo-web/webservices/v2" className="text-primary hover:underline" target="_blank" rel="noreferrer">NOAA CDO API</a></li>
+                                    <li><a href="https://waterservices.usgs.gov/" className="text-primary hover:underline" target="_blank" rel="noreferrer">USGS Water Services</a></li>
+                                    <li><a href="https://developers.synopticdata.com/" className="text-primary hover:underline" target="_blank" rel="noreferrer">Synoptic Data API</a></li>
+                                    <li><a href="https://rapidrefresh.noaa.gov/hrrr/" className="text-primary hover:underline" target="_blank" rel="noreferrer">NOAA HRRR Model Data</a></li>
+                                </ul>
                             </section>
 
                             <section>

@@ -51,67 +51,68 @@ export function StationSearch({
 
     return (
         <div className="flex flex-col gap-3">
-            <form onSubmit={(e) => { e.preventDefault(); onSearch(); }} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                {providerId && onProviderChange && providerOptions && (
-                    <select
-                        value={providerId}
-                        onChange={(e) => onProviderChange(e.target.value)}
-                        className="h-11 w-full sm:w-auto sm:max-w-[230px] px-3 rounded-md border border-input bg-primary/5 hover:bg-primary/10 transition-colors text-xs font-semibold text-primary outline-none focus:ring-2 focus:ring-primary/20"
-                        title="Select Data Provider"
-                    >
-                        {providerOptions.map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                    </select>
-                )}
-                {datasetId && onDatasetChange && datasetOptions && (
-                    <select
-                        value={datasetId}
-                        onChange={(e) => onDatasetChange(e.target.value)}
-                        className="h-11 w-full sm:w-auto sm:max-w-[230px] px-3 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all text-xs font-medium"
-                        title="Select Dataset"
-                    >
-                        {datasetOptions.map(opt => (
-                            <option key={opt.id} value={opt.id}>{opt.label}</option>
-                        ))}
-                    </select>
-                )}
-                {showTextSearch && (
-                    <>
-                        <div className="flex flex-col gap-2 sm:flex-1 sm:min-w-[280px]">
+            <div className="overflow-x-auto pb-1">
+                <form
+                    onSubmit={(e) => { e.preventDefault(); onSearch(); }}
+                    className="flex w-full min-w-max items-center gap-2"
+                >
+                    {providerId && onProviderChange && providerOptions && (
+                        <select
+                            value={providerId}
+                            onChange={(e) => onProviderChange(e.target.value)}
+                            className="h-11 w-[192px] shrink-0 px-3 rounded-md border border-input bg-primary/5 hover:bg-primary/10 transition-colors text-xs font-semibold text-primary outline-none focus:ring-2 focus:ring-primary/20"
+                            title="Select Data Provider"
+                        >
+                            {providerOptions.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    )}
+                    {datasetId && onDatasetChange && datasetOptions && (
+                        <select
+                            value={datasetId}
+                            onChange={(e) => onDatasetChange(e.target.value)}
+                            className="h-11 w-[196px] shrink-0 px-3 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all text-xs font-medium"
+                            title="Select Dataset"
+                        >
+                            {datasetOptions.map(opt => (
+                                <option key={opt.id} value={opt.id}>{opt.label}</option>
+                            ))}
+                        </select>
+                    )}
+                    {showTextSearch && (
+                        <div className="flex min-w-[320px] flex-1 items-center gap-2">
                             <input
                                 type="text"
                                 value={query}
                                 onChange={(e) => onQueryChange(e.target.value)}
                                 placeholder="Find stations by city, state, or id"
                                 aria-label="Search stations"
-                                className="h-11 w-full px-4 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all"
+                                className="h-11 min-w-[240px] flex-1 px-4 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all"
                             />
-                            <div className="grid grid-cols-[auto,1fr] gap-2 sm:flex sm:justify-end">
-                                <button
-                                    type="button"
-                                    onClick={onLocationSearch}
-                                    disabled={disabled}
-                                    title="Use my location"
-                                    aria-label="Search stations near my location"
-                                    className="h-11 px-3 bg-secondary text-secondary-foreground border border-input rounded-md hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center"
-                                >
-                                    <MapPin className="h-4 w-4" />
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={disabled}
-                                    aria-label="Search stations"
-                                    className="h-11 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
-                                >
-                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Search className="h-4 w-4" />}
-                                    Search
-                                </button>
-                            </div>
+                            <button
+                                type="button"
+                                onClick={onLocationSearch}
+                                disabled={disabled}
+                                title="Use my location"
+                                aria-label="Search stations near my location"
+                                className="h-11 shrink-0 px-3 bg-secondary text-secondary-foreground border border-input rounded-md hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center"
+                            >
+                                <MapPin className="h-4 w-4" />
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={disabled}
+                                aria-label="Search stations"
+                                className="h-11 shrink-0 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                            >
+                                {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Search className="h-4 w-4" />}
+                                Search
+                            </button>
                         </div>
-                    </>
-                )}
-            </form>
+                    )}
+                </form>
+            </div>
             {showCoordinateInput && (
                 <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">

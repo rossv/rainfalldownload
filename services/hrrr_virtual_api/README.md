@@ -1,6 +1,6 @@
 # HRRR Virtual API Service
 
-This FastAPI service powers `/api/hrrr` by reading HRRR model fields through [Herbie](https://github.com/blaylockbk/Herbie) and returning a point time-series payload compatible with the app's existing HRRR frontend contract.
+This FastAPI service powers `/api/hrrr` by reading HRRR model fields through [Herbie](https://github.com/blaylockbk/Herbie) and returning a point time-series payload compatible with the frontend `stationId + series` contract.
 
 ## Endpoint
 
@@ -15,6 +15,7 @@ Query params:
 - `leadHours` (comma-separated forecast lead hours)
 
 Response shape:
+
 ```json
 {
   "stationId": "hrrr-39.7392--104.9903",
@@ -31,9 +32,27 @@ Response shape:
 
 ## Run locally
 
+From the repository root:
+
 ```bash
 python -m venv .venv
+```
+
+Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+macOS/Linux:
+
+```bash
 source .venv/bin/activate
+```
+
+Then install dependencies and run:
+
+```bash
 pip install -r services/hrrr_virtual_api/requirements.txt
 uvicorn services.hrrr_virtual_api.app:app --host 0.0.0.0 --port 8000
 ```
@@ -45,4 +64,5 @@ Optional env vars:
 
 Set:
 - `HRRR_SERVICE_URL=http://127.0.0.1:8000/hrrr`
-- `HRRR_PROXY_TARGET` to your serverless host during local UI dev.
+- `HRRR_PROXY_TARGET` to your serverless host during local UI development.
+- `HRRR_USER_AGENT` if you want a custom downstream identifier header.

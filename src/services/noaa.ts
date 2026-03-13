@@ -3,9 +3,7 @@ import type { DataSource, DataType, FetchDataParams, Station, UnifiedTimeSeries 
 import { geocodeCity } from './geocoding';
 import type { DataQueryOptions, DataSourceCapabilities } from '../types/data-source';
 
-const BASE_NOAA = import.meta.env.DEV
-    ? '/api/noaa'
-    : 'https://www.ncdc.noaa.gov/cdo-web/api/v2';
+const BASE_NOAA = '/api/noaa';
 
 const CACHE_PREFIX = 'noaa_cache_v6_';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -360,31 +358,7 @@ export class NoaaService implements DataSource {
         this.ensureToken();
 
         const targetUrl = this.buildUrl(endpoint, params);
-
-        if (import.meta.env.DEV) {
-            return this.executeRequest<T>(targetUrl, context);
-        }
-
-        const proxyUrls = [
-            `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
-            `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
-            `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
-        ];
-
-        let lastError: Error | null = null;
-        for (const proxyUrl of proxyUrls) {
-            try {
-                return await this.executeRequest<T>(proxyUrl, context);
-            } catch (error) {
-                lastError = error instanceof Error ? error : new Error(String(error));
-                console.warn(`[RainfallDownloader] NOAA proxy attempt failed for ${context}.`, lastError.message);
-            }
-        }
-
-        throw new Error(
-            `${lastError?.message ?? 'NOAA request failed.'} Browser-side NOAA access is unreliable through public CORS proxies. ` +
-            'Running locally with `npm run dev` or deploying a server-side NOAA proxy is the most reliable option.'
-        );
+        return this.executeRequest<T>(targetUrl, context);
     }
 
     async findStationsByCity(city: string, limit = DEFAULT_SEARCH_LIMIT, buffer = DEFAULT_SEARCH_BUFFER, options: DataQueryOptions = {}): Promise<Station[]> {
