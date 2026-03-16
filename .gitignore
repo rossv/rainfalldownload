@@ -29,3 +29,10 @@ dist-ssr
 __pycache__/
 *.py[cod]
 .venv/
+
+# Local test/automation scratch artifacts
+.tmp/
+.pytest_tmp/
+.pytest_tmp_local2/
+test_output/
+_codex_delete_probe.txt

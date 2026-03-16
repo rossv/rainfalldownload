@@ -1,6 +1,7 @@
 import { getJsonWithRetry } from './http';
 
-const NOMINATIM_BASE = '/api/nominatim';
+const NOMINATIM_BASE = import.meta.env.VITE_NOMINATIM_PROXY_BASE
+    ?? (import.meta.env.DEV ? '/api/nominatim' : 'https://nominatim.openstreetmap.org/search');
 const CACHE_PREFIX = 'geocode_cache_v1_';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 

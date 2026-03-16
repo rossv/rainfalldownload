@@ -34,7 +34,7 @@ npm install
 npm run dev
 ```
 
-The dev server runs at <http://localhost:5173/rainfalldownload/>.
+The dev server runs at <http://localhost:5173/rainfalldownload/#/>.
 
 ### Configure provider credentials
 
@@ -42,6 +42,19 @@ The dev server runs at <http://localhost:5173/rainfalldownload/>.
 2. Select a provider.
 3. Enter credentials if that provider requires them (NOAA, Synoptic).
 4. Preferences are stored in `localStorage`.
+
+### Optional API base URL overrides
+
+You can override built-in NOAA and geocoding endpoints using Vite env vars:
+
+- `VITE_NOAA_PROXY_BASE`
+  - Default in dev: `/api/noaa`
+  - Default in production build: `https://www.ncdc.noaa.gov/cdo-web/api/v2`
+- `VITE_NOMINATIM_PROXY_BASE`
+  - Default in dev: `/api/nominatim`
+  - Default in production build: `https://nominatim.openstreetmap.org/search`
+
+Recommended: keep using proxy routes in production deployments when possible so you can manage headers, quotas, and request policies centrally.
 
 ## Usage
 

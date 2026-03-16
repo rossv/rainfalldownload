@@ -3,7 +3,8 @@ import type { DataSource, DataType, FetchDataParams, Station, UnifiedTimeSeries 
 import { geocodeCity } from './geocoding';
 import type { DataQueryOptions, DataSourceCapabilities } from '../types/data-source';
 
-const BASE_NOAA = '/api/noaa';
+const BASE_NOAA = import.meta.env.VITE_NOAA_PROXY_BASE
+    ?? (import.meta.env.DEV ? '/api/noaa' : 'https://www.ncdc.noaa.gov/cdo-web/api/v2');
 
 const CACHE_PREFIX = 'noaa_cache_v6_';
 const CACHE_TTL = 24 * 60 * 60 * 1000;

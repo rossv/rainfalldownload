@@ -118,12 +118,12 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
                         <div className="space-y-8 relative border-l border-border pl-6 ml-2">
                             <div className="relative">
                                 <div className="absolute -left-[31px] bg-primary rounded-full h-4 w-4 border-2 border-background" />
-                                <h2 className="text-lg font-semibold text-foreground">v2.1.0 - Multi-Provider Documentation Refresh</h2>
+                                <h2 className="text-lg font-semibold text-foreground">v2.1.1 - API Endpoint Config Docs</h2>
                                 <p className="text-xs text-muted-foreground mb-3">Released: March 2026</p>
                                 <ul className="list-disc ml-4 text-sm text-muted-foreground space-y-1">
-                                    <li>Updated in-app help to reflect all currently supported providers.</li>
-                                    <li>Clarified credential requirements for NOAA and Synoptic.</li>
-                                    <li>Aligned provider guidance with current station/HRRR workflows.</li>
+                                    <li>Documented NOAA and geocoding API base URL override behavior in project docs.</li>
+                                    <li>Clarified local routing URL format for hash-based navigation.</li>
+                                    <li>Kept provider guidance aligned with current NOAA/USGS/Synoptic/HRRR workflows.</li>
                                 </ul>
                             </div>
 
