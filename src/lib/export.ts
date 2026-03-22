@@ -147,13 +147,14 @@ export function downloadSWMM(stations: Station[], data: UnifiedTimeSeries[], dat
     const content = formattedRows.join('\n');
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
 
-    let filename = `swmm_rainfall.dat`;
+    const today = new Date().toISOString().split('T')[0];
+    let filename = `swmm_rainfall_${today}.dat`;
     if (stations.length === 1) {
         const name = stations[0].name || 'STATION';
         const safeName = name.replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
-        filename = `${safeName}_SWMM.dat`;
+        filename = `${safeName}_SWMM_${today}.dat`;
     } else if (stations.length > 1) {
-        filename = `Multiple_Stations_SWMM_${new Date().toISOString().split('T')[0]}.dat`;
+        filename = `Multiple_Stations_SWMM_${today}.dat`;
     }
 
     saveAs(blob, filename);

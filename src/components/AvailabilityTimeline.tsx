@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronRight, X, Loader2 } from 'lucide-react';
 import { differenceInDays, parseISO, min, max } from 'date-fns';
 import { formatDate } from '../lib/dateUtils';
@@ -87,7 +87,7 @@ export function AvailabilityTimeline({
             Math.max(minWidthPercent, (duration / totalDays) * 100)
         );
 
-        return { left: `${left}% `, width: `${width}% ` };
+        return { left: `${left}%`, width: `${width}%` };
     };
 
     // Selection Box Style
@@ -107,47 +107,35 @@ export function AvailabilityTimeline({
     }, [minDate, maxDate]);
 
     // Drag handlers
-    // Actually standard ref is easier.
+    const containerRef = useRef<HTMLDivElement>(null);
 
-    const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!onRangeChange) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const width = rect.width;
-        const percent = Math.max(0, Math.min(1, x / width));
-
-        // Calculate date from percentage
+    const dateFromClientX = (clientX: number): Date | null => {
+        const container = containerRef.current;
+        if (!container) return null;
+        const rect = container.getBoundingClientRect();
+        const x = clientX - rect.left;
+        const percent = Math.max(0, Math.min(1, x / rect.width));
         const daysOffset = Math.round(percent * totalDays);
         const date = new Date(minDate);
         date.setDate(date.getDate() + daysOffset);
+        return date;
+    };
 
+    const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!onRangeChange) return;
+        const date = dateFromClientX(e.clientX);
+        if (!date) return;
         setDragStartDate(date);
         setIsDragging(true);
-
-        // Initial click starts a 1-day range or point
         onRangeChange(date.toISOString().split('T')[0], date.toISOString().split('T')[0]);
     };
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         if (!isDragging || !dragStartDate || !onRangeChange) return;
-
-        const rect = e.currentTarget.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const width = rect.width;
-        const percent = Math.max(0, Math.min(1, x / width));
-
-        const daysOffset = Math.round(percent * totalDays);
-        const currentDate = new Date(minDate);
-        currentDate.setDate(currentDate.getDate() + daysOffset);
-
-        let start = dragStartDate;
-        let end = currentDate;
-
-        if (currentDate < dragStartDate) {
-            start = currentDate;
-            end = dragStartDate;
-        }
-
+        const currentDate = dateFromClientX(e.clientX);
+        if (!currentDate) return;
+        const start = currentDate < dragStartDate ? currentDate : dragStartDate;
+        const end = currentDate < dragStartDate ? dragStartDate : currentDate;
         onRangeChange(start.toISOString().split('T')[0], end.toISOString().split('T')[0]);
     };
 
@@ -156,11 +144,39 @@ export function AvailabilityTimeline({
         setDragStartDate(null);
     };
 
-    // Add global mouse up listener to handle drag end outside component
+    const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+        if (!onRangeChange || e.touches.length === 0) return;
+        const date = dateFromClientX(e.touches[0].clientX);
+        if (!date) return;
+        setDragStartDate(date);
+        setIsDragging(true);
+        onRangeChange(date.toISOString().split('T')[0], date.toISOString().split('T')[0]);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+        if (!isDragging || !dragStartDate || !onRangeChange || e.touches.length === 0) return;
+        e.preventDefault();
+        const currentDate = dateFromClientX(e.touches[0].clientX);
+        if (!currentDate) return;
+        const start = currentDate < dragStartDate ? currentDate : dragStartDate;
+        const end = currentDate < dragStartDate ? dragStartDate : currentDate;
+        onRangeChange(start.toISOString().split('T')[0], end.toISOString().split('T')[0]);
+    };
+
+    const handleTouchEnd = () => {
+        setIsDragging(false);
+        setDragStartDate(null);
+    };
+
+    // Add global mouse/touch up listener to handle drag end outside component
     useEffect(() => {
         if (isDragging) {
             window.addEventListener('mouseup', handleMouseUp);
-            return () => window.removeEventListener('mouseup', handleMouseUp);
+            window.addEventListener('touchend', handleTouchEnd);
+            return () => {
+                window.removeEventListener('mouseup', handleMouseUp);
+                window.removeEventListener('touchend', handleTouchEnd);
+            };
         }
     }, [isDragging]);
 
@@ -179,9 +195,14 @@ export function AvailabilityTimeline({
 
             <div className="flex-1 overflow-auto relative">
                 <div
+                    ref={containerRef}
                     className="min-w-[600px] relative pb-6 cursor-crosshair"
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    style={{ touchAction: 'none' }}
                 >
                     {/* Selection Overlay Background (optional highlight for entire column) */}
                     {selectionStyle && (
@@ -280,7 +301,7 @@ export function AvailabilityTimeline({
                                                 <div className="flex flex-wrap gap-1">
                                                     {isLoading ? (
                                                         <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                                            <Loader2 className="h-3 w-3 animate-spin" /> Checking params...
+                                                            <Loader2 className="h-3 w-3 animate-spin" /> Loading availability...
                                                         </span>
                                                     ) : (
                                                         dataTypes.map(dt => {

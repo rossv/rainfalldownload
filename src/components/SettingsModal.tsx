@@ -23,6 +23,19 @@ export function SettingsModal({ credentials: initialCredentials, providerId, pro
 
     if (!isOpen) return null;
 
+    const handleSave = () => {
+        const cleaned = {
+            ...credentials,
+            [provider]: {
+                ...(credentials[provider] ?? {}),
+                token: credentialValue.trim(),
+                apiKey: credentialValue.trim()
+            }
+        };
+        onSave({ credentials: cleaned, providerId: provider });
+        onClose();
+    };
+
     return (
         <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-card border border-border rounded-lg shadow-lg max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
@@ -30,7 +43,7 @@ export function SettingsModal({ credentials: initialCredentials, providerId, pro
                     <h2 className="text-xl font-bold flex items-center gap-2">
                         <SettingsIcon className="h-5 w-5" /> Settings
                     </h2>
-                    <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+                    <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close settings">
                         <X className="h-5 w-5" />
                     </button>
                 </div>
@@ -78,6 +91,7 @@ export function SettingsModal({ credentials: initialCredentials, providerId, pro
                                         apiKey: e.target.value
                                     }
                                 }))}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
                                 className="w-full px-3 py-2 pr-10 rounded-md border border-input bg-background"
                                 placeholder={providerDefinition?.auth?.placeholder ?? "Enter your token..."}
                             />
@@ -101,18 +115,7 @@ export function SettingsModal({ credentials: initialCredentials, providerId, pro
                     <div className="flex justify-end gap-2 pt-4">
                         <button onClick={onClose} className="px-4 py-2 hover:bg-muted rounded-md transition-colors">Cancel</button>
                         <button
-                            onClick={() => {
-                                const cleaned = {
-                                    ...credentials,
-                                    [provider]: {
-                                        ...(credentials[provider] ?? {}),
-                                        token: credentialValue.trim(),
-                                        apiKey: credentialValue.trim()
-                                    }
-                                };
-                                onSave({ credentials: cleaned, providerId: provider });
-                                onClose();
-                            }}
+                            onClick={handleSave}
                             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
                         >
                             Save

@@ -10,6 +10,8 @@ interface StationListProps {
     onToggleStation: (station: Station) => void;
     dataSource: DataSource | null;
     supportsDataTypeLookup?: boolean;
+    isPointSelectionMode?: boolean;
+    onClearAll?: () => void;
 }
 
 export function StationList({
@@ -17,7 +19,9 @@ export function StationList({
     selectedStations,
     onToggleStation,
     dataSource,
-    supportsDataTypeLookup = true
+    supportsDataTypeLookup = true,
+    isPointSelectionMode = false,
+    onClearAll
 }: StationListProps) {
     const [expandedStationId, setExpandedStationId] = useState<string | null>(null);
     const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
@@ -70,7 +74,6 @@ export function StationList({
         }
 
         if (!dataSource) {
-            alert('Configure your data provider in Settings to load station details.');
             return;
         }
 
@@ -104,9 +107,13 @@ export function StationList({
 
     if (stations.length === 0) {
         return (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 border border-dashed rounded-xl">
-                <p>No stations found.</p>
-                <p className="text-sm">Search for a city to see results.</p>
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 border border-dashed rounded-xl gap-1">
+                <p className="font-medium">No stations found.</p>
+                <p className="text-sm text-center">
+                    {isPointSelectionMode
+                        ? 'Click the map or enter coordinates to select a point.'
+                        : 'Search for a city or use your location to find stations.'}
+                </p>
             </div>
         );
     }
@@ -247,11 +254,13 @@ export function StationList({
                             </>
                         )}
 
-                        <tr className="bg-muted/20 border-b border-border">
-                            <td colSpan={7} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                Other Stations
-                            </td>
-                        </tr>
+                        {sortedStations.filter(s => !isSelected(s.id)).length > 0 && (
+                            <tr className="bg-muted/20 border-b border-border">
+                                <td colSpan={7} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                    Other Stations
+                                </td>
+                            </tr>
+                        )}
 
                         {sortedStations.filter(s => !isSelected(s.id)).map((station) => {
                             const expanded = expandedStationId === station.id;
@@ -316,16 +325,21 @@ export function StationList({
                                                         </div>
                                                     ) : details && details.length > 0 ? (
                                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                                            {details.map(dt => (
+                                                            {details.map(dt => {
+                                                                const coveragePct = dt.datacoverage != null
+                                                                    ? Math.round(dt.datacoverage * 100)
+                                                                    : null;
+                                                                return (
                                                                 <div key={dt.id} className="bg-background border rounded p-2 text-xs shadow-sm">
                                                                     <div className="font-medium text-foreground">{dt.name || dt.id}</div>
                                                                     <div className="text-muted-foreground font-mono mt-1">{dt.id}</div>
                                                                     <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
                                                                         <span>{formatDate(dt.mindate)} - {formatDate(dt.maxdate)}</span>
-                                                                        <span>{Math.round(dt.datacoverage * 100)}%</span>
+                                                                        <span>{coveragePct !== null ? `${coveragePct}%` : 'N/A'}</span>
                                                                     </div>
                                                                 </div>
-                                                            ))}
+                                                                );
+                                                            })}
                                                         </div>
                                                     ) : (
                                                         <div className="text-sm text-muted-foreground italic">No detailed parameter info available.</div>
@@ -341,8 +355,18 @@ export function StationList({
                 </table>
             </div>
             <div className="p-2 border-t border-border bg-muted/20 text-xs text-muted-foreground flex justify-between items-center">
-                <span>Total Stations: {stations.length}</span>
-                <span>{selectedStations.length} selected</span>
+                <span>Total: {stations.length}</span>
+                <div className="flex items-center gap-3">
+                    {selectedStations.length > 0 && onClearAll && (
+                        <button
+                            onClick={onClearAll}
+                            className="text-xs text-rose-500 hover:text-rose-700 transition-colors"
+                        >
+                            Clear selection
+                        </button>
+                    )}
+                    <span>{selectedStations.length} selected</span>
+                </div>
             </div>
         </div>
     );
