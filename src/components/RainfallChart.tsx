@@ -109,7 +109,7 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
                     peakIntensity = peakVal * (60 / intervalMin); // Still normalize to hr? Yes usually "intensity" is /hr
                 }
             } else if (intervalMin === 0 && seriesData.length === 1) {
-                timeStepLabel = "Single";
+                timeStepLabel = "Single observation";
             }
 
             // 3. Peak 1-Hr (Rolling Sum)
@@ -197,6 +197,7 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
             {/* Left Col: Statistics Panel */}
             <div className="w-full md:w-64 max-h-[350px] overflow-y-auto flex-shrink-0 space-y-3 pr-2 border-b md:border-b-0 md:border-r border-border custom-scrollbar">
                 <h3 className="font-semibold text-sm sticky top-0 bg-card py-1 z-10">{title} Stats</h3>
+                <p className="text-[10px] text-muted-foreground -mt-2 pb-1">Click legend entries to show/hide series.</p>
                 {stationStats.map((stat: any, index: number) => {
                     const color = COLORS[index % COLORS.length];
                     const isHidden = hiddenSeries.has(stat.safeId);

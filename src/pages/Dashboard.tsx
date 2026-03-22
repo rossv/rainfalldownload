@@ -8,13 +8,14 @@ import { RainfallChart } from '../components/RainfallChart';
 import { createProvider, getProviderCapabilities, listProviders } from '../services/providers';
 import type { Station, UnifiedTimeSeries, DataSource } from '../types';
 import { downloadCSV, downloadSWMM } from '../lib/export';
-import { Loader2, Download, Search as SearchIcon } from 'lucide-react';
+import { Loader2, Download, Search as SearchIcon, ArrowLeft, RefreshCw, Map } from 'lucide-react';
 import { AvailabilityTimeline } from '../components/AvailabilityTimeline';
 import { StatusCenter } from '../components/StatusCenter';
 import { cn } from '../lib/utils';
 import { usePreferences } from '../hooks/usePreferences';
 import { NOAA_DATATYPE_WHITELIST, NOAA_DATASET_WHITELIST } from '../services/noaa';
 import { DEFAULT_HRRR_PARAMETER, HRRR_PARAMETER_OPTIONS } from '../services/providers/hrrr-params';
+import { formatDate } from '../lib/dateUtils';
 
 const NOAA_FETCH_CONCURRENCY = 2;
 const DEFAULT_FETCH_CONCURRENCY = 4;
@@ -171,6 +172,12 @@ export function Dashboard() {
     const [stationAvailability, setStationAvailability] = useState<Record<string, import('../types').DataType[]>>({});
     const [availabilityLoading, setAvailabilityLoading] = useState<Record<string, boolean>>({});
     const [statusTasks, setStatusTasks] = useState<{ id: string, message: string, status: 'pending' | 'success' | 'error' }[]>([]);
+
+    const pushToast = useCallback((message: string, status: 'success' | 'error', durationMs = 5000) => {
+        const id = `toast-${Date.now()}-${Math.random()}`;
+        setStatusTasks(prev => [...prev, { id, message, status }]);
+        setTimeout(() => setStatusTasks(prev => prev.filter(t => t.id !== id)), durationMs);
+    }, []);
     const [selectedDataTypes, setSelectedDataTypes] = useState<string[]>(['PRCP']);
     const [datasetId, setDatasetId] = useState<string>(NOAA_DATASET_WHITELIST[0]);
     const [hrrrProductType, setHrrrProductType] = useState<'analysis' | 'forecast'>('forecast');
@@ -223,8 +230,10 @@ export function Dashboard() {
     // Auto-select defaults when dataset changes (NOAA only)
     useEffect(() => {
         if (preferences.providerId !== 'noaa') return;
-        // Clear selected stations to prevent mixing datasets
+        // Clear selected stations and stale chart data to prevent mixing datasets
         setSelectedStations([]);
+        setRainfallData([]);
+        setLastFetchedParams(null);
 
         if (datasetId === 'PRECIP_HLY') {
             setSelectedDataTypes(['HPCP']);
@@ -269,12 +278,13 @@ export function Dashboard() {
         setCoordinateError(null);
         setCoordinateInput({ lat: '', lon: '' });
         setVirtualStation(null);
-        if (isPointSelectionMode) {
-            setStations([]);
-            setSelectedStations([]);
-            setMapCenter(undefined);
-        }
-    }, [isPointSelectionMode, preferences.providerId]);
+        setRainfallData([]);
+        setLastFetchedParams(null);
+        setSearchQuery('');
+        setStations([]);
+        setSelectedStations([]);
+        setMapCenter(undefined);
+    }, [preferences.providerId]);
 
     const fetchedTrackingRef = useRef<Set<string>>(new Set());
     const activeSearchRequestRef = useRef(0);
@@ -294,18 +304,8 @@ export function Dashboard() {
 
     // --- Search Logic ---
 
-    const searchError = (error: any, defaultMsg: string) => {
+    const searchError = useCallback((error: any, defaultMsg: string) => {
         console.error('Search failed:', error);
-        if (axios.isAxiosError(error)) {
-            console.error('Axios Error Details:', {
-                code: error.code,
-                message: error.message,
-                response: {
-                    status: error.response?.status,
-                    data: error.response?.data,
-                }
-            });
-        }
         let message = defaultMsg;
         if (axios.isAxiosError(error)) {
             if (error.response?.status === 401) {
@@ -316,8 +316,8 @@ export function Dashboard() {
                 message = 'The provider is responding slowly. Please retry.';
             }
         }
-        alert(message);
-    };
+        pushToast(message, 'error');
+    }, [pushToast]);
 
     const parseCoordinate = (value: string, min: number, max: number): number | null => {
         if (!value.trim()) return null;
@@ -412,7 +412,7 @@ export function Dashboard() {
         if (!caps?.supportsStationSearch) {
             if (caps?.supportsSpatialSearch) {
                 if (!navigator.geolocation) {
-                    alert('Geolocation is not supported by your browser');
+                    pushToast('Geolocation is not supported by your browser.', 'error');
                     return;
                 }
 
@@ -426,21 +426,21 @@ export function Dashboard() {
                     (error) => {
                         console.error(error);
                         setSearchLoading(false);
-                        alert('Location permission denied or unavailable.');
+                        pushToast('Location permission denied or unavailable.', 'error');
                     }
                 );
                 return;
             }
-            alert('The selected provider does not support station search.');
+            pushToast('The selected provider does not support station search.', 'error');
             return;
         }
         if (!hasApiKey && caps?.requiresApiKey) {
-            alert('Add your API Token in Settings before searching.');
+            pushToast('Add your API Token in Settings before searching.', 'error');
             return;
         }
 
         if (!navigator.geolocation) {
-            alert('Geolocation is not supported by your browser');
+            pushToast('Geolocation is not supported by your browser.', 'error');
             return;
         }
 
@@ -453,7 +453,7 @@ export function Dashboard() {
             (error) => {
                 console.error(error);
                 setSearchLoading(false);
-                alert('Location permission denied or unavailable.');
+                pushToast('Location permission denied or unavailable.', 'error');
             }
         );
     };
@@ -562,7 +562,7 @@ export function Dashboard() {
     const handleFetchData = async () => {
         if (selectedStations.length === 0) return;
         if (!dataSource) {
-            alert("Please configure your data provider in Settings first.");
+            pushToast('Please configure your data provider in Settings first.', 'error');
             return;
         }
 
@@ -837,8 +837,8 @@ export function Dashboard() {
                     {/* Overlay for Show Map */}
                     {viewMode === 'configuration' && (
                         <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/10 backdrop-blur-[1px] hover:backdrop-blur-none transition-all">
-                            <div className="bg-primary/90 text-primary-foreground px-4 py-2 rounded-full font-medium shadow-lg transform -rotate-90 lg:rotate-0 whitespace-nowrap flex items-center gap-2 hover:scale-105 transition-transform">
-                                <SearchIcon className="h-4 w-4 rotate-90 lg:rotate-0" /> Show Map
+                            <div className="bg-primary/90 text-primary-foreground px-4 py-2 rounded-full font-medium shadow-lg whitespace-nowrap flex items-center gap-2 hover:scale-105 transition-transform">
+                                <Map className="h-4 w-4" /> Show Map
                             </div>
                         </div>
                     )}
@@ -923,6 +923,8 @@ export function Dashboard() {
                             onToggleStation={toggleStation}
                             dataSource={dataSource}
                             supportsDataTypeLookup={supportsDataTypeLookup}
+                            isPointSelectionMode={isPointSelectionMode}
+                            onClearAll={() => setSelectedStations([])}
                         />
                     </div>
                 </div>
@@ -971,10 +973,11 @@ export function Dashboard() {
                                     {viewMode === 'configuration' && (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setViewMode('discovery'); }}
-                                            className="p-1 hover:bg-muted rounded-full mr-2 transition-colors"
+                                            className="flex items-center gap-1.5 p-1 pr-2 hover:bg-muted rounded-full mr-2 transition-colors text-sm text-muted-foreground hover:text-foreground"
                                             title="Back to Map"
                                         >
-                                            <SearchIcon className="h-4 w-4" />
+                                            <ArrowLeft className="h-4 w-4" />
+                                            <span className="text-xs">Map</span>
                                         </button>
                                     )}
                                     Query Parameters
@@ -996,6 +999,7 @@ export function Dashboard() {
                                                     <option value="forecast">Forecast (future hours)</option>
                                                 </select>
                                             </div>
+                                            {hrrrProductType === 'forecast' && (
                                             <div>
                                                 <label className="text-sm font-medium mb-1 block">Forecast Lead Hours</label>
                                                 <select
@@ -1007,6 +1011,7 @@ export function Dashboard() {
                                                     <option value="0-48">0–48 hours (extended)</option>
                                                 </select>
                                             </div>
+                                            )}
                                             <div>
                                                 <label className="text-sm font-medium mb-1 block">Aggregation Window</label>
                                                 <select
@@ -1068,12 +1073,12 @@ export function Dashboard() {
                                         </div>
                                         {dateConstraints.min && (
                                             <p className="text-xs text-muted-foreground mt-1">
-                                                Available: {dateConstraints.min} to {dateConstraints.max}
+                                                Available: {formatDate(dateConstraints.min)} to {formatDate(dateConstraints.max)}
                                             </p>
                                         )}
                                         {preferences.providerId === 'hrrr' && (
                                             <p className="text-xs text-amber-600 mt-1">
-                                                HRRR is a short-range gridded model (~48-hour rolling archive, ~18-hour forecast). Date ranges are limited to {providerCapabilities?.maxDateRangeDays ?? 2} days.
+                                                HRRR archive: ~48-hour rolling window. Forecasts: up to 18 hours ahead. Date ranges limited to {providerCapabilities?.maxDateRangeDays ?? 2} days.
                                             </p>
                                         )}
                                     </div>
@@ -1145,7 +1150,7 @@ export function Dashboard() {
                                     hasData ? "w-auto px-6 whitespace-nowrap" : "flex-1"
                                 )}
                             >
-                                {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Download className="h-4 w-4" />}
+                                {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
                                 <span className="whitespace-nowrap">Fetch Data</span>
                             </button>
 
@@ -1188,14 +1193,14 @@ export function Dashboard() {
                                         fetchStatus === 'empty' && "bg-gray-400"
                                     )} />
                                     <div className="flex flex-col leading-none overflow-hidden text-center">
-                                        <span className="font-bold truncate">
+                                        <span className="font-bold">
                                             {fetchStatus === 'fresh' && "Data Ready"}
                                             {fetchStatus === 'stale' && "Update Needed"}
                                             {fetchStatus === 'empty' && "No Results"}
                                         </span>
-                                        {fetchStatus === 'fresh' && <span className="text-[10px] opacity-80 mt-0.5 truncate">Graphs updated below &darr;</span>}
-                                        {fetchStatus === 'stale' && <span className="text-[10px] opacity-80 mt-0.5 truncate">Parameters changed</span>}
-                                        {fetchStatus === 'empty' && <span className="text-[10px] opacity-80 mt-0.5 truncate">Try different dates</span>}
+                                        {fetchStatus === 'fresh' && <span className="text-[10px] opacity-80 mt-0.5">Graphs updated below ↓</span>}
+                                        {fetchStatus === 'stale' && <span className="text-[10px] opacity-80 mt-0.5">Parameters changed</span>}
+                                        {fetchStatus === 'empty' && <span className="text-[10px] opacity-80 mt-0.5">Try different dates</span>}
                                     </div>
                                 </div>
                             )}

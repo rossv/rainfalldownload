@@ -55,6 +55,7 @@ export function Layout() {
                             onClick={() => setShowSettings(true)}
                             className="p-2 hover:bg-muted rounded-full transition-colors"
                             title="Settings"
+                            aria-label="Open Settings"
                         >
                             <SettingsIcon className="h-5 w-5" />
                         </button>
@@ -68,7 +69,7 @@ export function Layout() {
 
             <footer className="border-t border-border p-2 bg-card mt-auto transition-[padding,height]">
                 <div className="container mx-auto flex flex-col md:flex-row justify-between items-center text-xs text-muted-foreground gap-2">
-                    <p>© 2025 Rainfall Downloader. Open Source.</p>
+                    <p>© {new Date().getFullYear()} Rainfall Downloader. Open Source.</p>
                     <div className="flex gap-4">
                         <button onClick={() => setShowHelp(true)} className="hover:text-foreground transition-colors">Help & Info</button>
                     </div>
