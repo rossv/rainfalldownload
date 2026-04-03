@@ -1,6 +1,6 @@
 
-import axios from 'axios';
 import type { DataSource, DataSourceCapabilities, UnifiedTimeSeries, Station, DataType } from '../../types';
+import { getJsonWithRetry } from '../http';
 
 export const USGS_CAPABILITIES: DataSourceCapabilities = {
     id: 'usgs_nwis',
@@ -44,38 +44,23 @@ export class NwisService implements DataSource {
         // We use JSON format (default 1.1)
         const jsonUrl = `https://waterservices.usgs.gov/nwis/site/?format=json&bBox=${bBox}&parameterCd=00045,00060,00065&hasDataTypeCd=iv&siteStatus=active`;
 
-        try {
-            const response = await axios.get(jsonUrl);
-
-            if (!response.data || !response.data.value || !response.data.value.timeSeries) {
-                return (response.data?.value?.timeSeries || []).map((ts: any) => this.mapEstToStation(ts.sourceInfo));
-            }
-            // If the primary path works (it should be response.data.value.timeSeries)
-            return (response.data.value.timeSeries || []).map((ts: any) => this.mapEstToStation(ts.sourceInfo));
-        } catch (e) {
-            console.error("USGS Search failed", e);
-            return [];
-        }
+        const data = await getJsonWithRetry<any>(jsonUrl, { timeout: 15000 }, { retries: 2 });
+        return (data?.value?.timeSeries || []).map((ts: any) => this.mapEstToStation(ts.sourceInfo));
     }
 
     private async findStationsByStateOrId(siteId: string): Promise<Station[]> {
         const url = `https://waterservices.usgs.gov/nwis/site/?format=json&sites=${siteId}&parameterCd=00045,00060,00065&siteStatus=all`;
-        try {
-            const response = await axios.get(url);
-            const series = response.data?.value?.timeSeries || [];
-            if (series.length > 0) {
-                const unique = new Map<string, Station>();
-                series.forEach((ts: any) => {
-                    const st = this.mapEstToStation(ts.sourceInfo);
-                    unique.set(st.id, st);
-                });
-                return Array.from(unique.values());
-            }
-            return [];
-        } catch (e) {
-            console.error(e);
-            return [];
+        const data = await getJsonWithRetry<any>(url, { timeout: 15000 }, { retries: 2 });
+        const series = data?.value?.timeSeries || [];
+        if (series.length > 0) {
+            const unique = new Map<string, Station>();
+            series.forEach((ts: any) => {
+                const st = this.mapEstToStation(ts.sourceInfo);
+                unique.set(st.id, st);
+            });
+            return Array.from(unique.values());
         }
+        return [];
     }
 
     private mapEstToStation(sourceInfo: any): Station {
@@ -111,13 +96,12 @@ export class NwisService implements DataSource {
 
         const url = `https://waterservices.usgs.gov/nwis/iv/?format=json&sites=${siteList}&startDT=${start}&endDT=${end}&parameterCd=${pCodes}&siteStatus=all`;
 
-        try {
-            const response = await axios.get(url);
-            const timeSeries = response.data?.value?.timeSeries || [];
+        const data = await getJsonWithRetry<any>(url, { timeout: 20000 }, { retries: 2 });
+        const timeSeries = data?.value?.timeSeries || [];
 
-            const results: UnifiedTimeSeries[] = [];
+        const results: UnifiedTimeSeries[] = [];
 
-            timeSeries.forEach((ts: any) => {
+        timeSeries.forEach((ts: any) => {
                 const sourceInfo = ts.sourceInfo;
                 const variable = ts.variable;
                 const values = ts.values?.[0]?.value || [];
@@ -141,10 +125,6 @@ export class NwisService implements DataSource {
                 });
             });
 
-            return results;
-        } catch (e) {
-            console.error("USGS Fetch Data Failed", e);
-            throw e;
-        }
+        return results;
     }
 }
