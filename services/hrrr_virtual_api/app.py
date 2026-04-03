@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import os
 from dataclasses import dataclass
@@ -230,7 +231,11 @@ def get_hrrr_series(
                         continue
                     try:
                         value = fetch_point_value(run_time, lead, parameter, lat=lat, lon=lon)
-                    except Exception:
+                    except Exception as exc:
+                        logging.warning(
+                            "HRRR: skipping point run_time=%s lead=%s param=%s: %s",
+                            run_time, lead, parameter.id, exc,
+                        )
                         continue
 
                     if value is None:

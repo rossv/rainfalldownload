@@ -49,7 +49,7 @@ export async function getJsonWithRetry<T>(
             if (!shouldRetry(error) || attempt >= retries) {
                 throw error;
             }
-            const delay = backoffMs * Math.pow(2, attempt);
+            const delay = backoffMs * Math.pow(2, attempt) + Math.random() * backoffMs;
             await sleep(delay);
         }
         attempt += 1;
