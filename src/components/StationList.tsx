@@ -27,6 +27,7 @@ export function StationList({
     const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
     const [stationDetails, setStationDetails] = useState<Record<string, DataType[]>>({});
     const [sortConfig, setSortConfig] = useState<{ key: keyof Station | 'mindate' | 'maxdate'; direction: 'asc' | 'desc' } | null>({ key: 'datacoverage', direction: 'desc' });
+    const [filterQuery, setFilterQuery] = useState('');
 
     const handleSort = (key: keyof Station | 'mindate' | 'maxdate') => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -56,6 +57,13 @@ export function StationList({
         }
         return 0;
     });
+
+    const filteredStations = filterQuery.trim()
+        ? sortedStations.filter(s =>
+            s.name.toLowerCase().includes(filterQuery.toLowerCase()) ||
+            s.id.toLowerCase().includes(filterQuery.toLowerCase())
+        )
+        : sortedStations;
 
     const isSelected = (id: string) => selectedStations.some(s => s.id === id);
 
@@ -137,6 +145,15 @@ export function StationList({
 
     return (
         <div className="h-full flex flex-col border border-border rounded-xl bg-card overflow-hidden shadow-sm">
+            <div className="px-3 py-2 border-b border-border flex-none">
+                <input
+                    type="text"
+                    value={filterQuery}
+                    onChange={e => setFilterQuery(e.target.value)}
+                    placeholder="Filter by name or ID…"
+                    className="w-full px-2 py-1 text-xs rounded border border-input bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+            </div>
             <div className="overflow-auto flex-1">
                 <table className="w-full text-sm text-left">
                     <thead className="text-xs text-muted-foreground bg-muted sticky top-0 z-10">
@@ -152,14 +169,14 @@ export function StationList({
                     </thead>
                     <tbody className="divide-y divide-border">
                         {/* Selected Stations Section - always at top if any */}
-                        {sortedStations.filter(s => isSelected(s.id)).length > 0 && (
+                        {filteredStations.filter(s => isSelected(s.id)).length > 0 && (
                             <>
                                 <tr className="bg-muted/50 border-b-2 border-primary/20">
                                     <td colSpan={7} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-primary">
                                         Selected Stations
                                     </td>
                                 </tr>
-                        {sortedStations.filter(s => isSelected(s.id)).map((station) => {
+                        {filteredStations.filter(s => isSelected(s.id)).map((station) => {
                                     const expanded = expandedStationId === station.id;
                                     const loading = loadingDetails === station.id;
                                     const details = stationDetails[station.id];
@@ -254,7 +271,7 @@ export function StationList({
                             </>
                         )}
 
-                        {sortedStations.filter(s => !isSelected(s.id)).length > 0 && (
+                        {filteredStations.filter(s => !isSelected(s.id)).length > 0 && (
                             <tr className="bg-muted/20 border-b border-border">
                                 <td colSpan={7} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                                     Other Stations
@@ -262,7 +279,7 @@ export function StationList({
                             </tr>
                         )}
 
-                        {sortedStations.filter(s => !isSelected(s.id)).map((station) => {
+                        {filteredStations.filter(s => !isSelected(s.id)).map((station) => {
                             const expanded = expandedStationId === station.id;
                             const loading = loadingDetails === station.id;
                             const details = stationDetails[station.id];
@@ -355,7 +372,7 @@ export function StationList({
                 </table>
             </div>
             <div className="p-2 border-t border-border bg-muted/20 text-xs text-muted-foreground flex justify-between items-center">
-                <span>Total: {stations.length}</span>
+                <span>{filterQuery.trim() ? `${filteredStations.length} of ${stations.length}` : `Total: ${stations.length}`}</span>
                 <div className="flex items-center gap-3">
                     {selectedStations.length > 0 && onClearAll && (
                         <button

@@ -44,9 +44,9 @@ export class SynopticService implements DataSource {
     }
 
     async findStationsByCity(city: string): Promise<Station[]> {
-        const coords = await import('../geocoding').then(m => m.geocodeCity(city));
-        if (!coords) return [];
-        return this.findStationsByCoords(coords.lat, coords.lon);
+        const results = await import('../geocoding').then(m => m.geocodeCity(city));
+        if (results.length === 0) return [];
+        return this.findStationsByCoords(results[0].lat, results[0].lon);
     }
 
     async findStationsByCoords(lat: number, lon: number, radiusKm: number = 25): Promise<Station[]> {

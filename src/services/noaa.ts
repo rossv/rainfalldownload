@@ -371,8 +371,9 @@ export class NoaaService implements DataSource {
         const cached = getCache<Station[]>(cacheKey);
         if (cached) return cached;
 
-        const coords = await geocodeCity(city.trim());
-        if (!coords) return [];
+        const geocodeResults = await geocodeCity(city.trim());
+        if (geocodeResults.length === 0) return [];
+        const coords = geocodeResults[0];
 
         const stations = await this.findStationsByCoords(coords.lat, coords.lon, limit, buffer, options);
         setCache(cacheKey, stations);

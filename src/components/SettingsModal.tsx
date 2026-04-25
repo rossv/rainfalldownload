@@ -1,5 +1,6 @@
 import { Settings as SettingsIcon, X, Eye, EyeOff } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import type { ProviderDefinition, ProviderId } from '../services/providers';
 import type { ProviderCredentials } from '../types/data-source';
 
@@ -21,6 +22,9 @@ export function SettingsModal({ credentials: initialCredentials, providerId, pro
     const currentCredentials = credentials[provider] ?? {};
     const credentialValue = currentCredentials.token ?? currentCredentials.apiKey ?? '';
 
+    const dialogRef = useRef<HTMLDivElement>(null);
+    useFocusTrap(dialogRef, isOpen, onClose);
+
     if (!isOpen) return null;
 
     const handleSave = () => {
@@ -37,10 +41,10 @@ export function SettingsModal({ credentials: initialCredentials, providerId, pro
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-card border border-border rounded-lg shadow-lg max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="settings-title" className="bg-card border border-border rounded-lg shadow-lg max-w-md w-full p-6 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold flex items-center gap-2">
+                    <h2 id="settings-title" className="text-xl font-bold flex items-center gap-2">
                         <SettingsIcon className="h-5 w-5" /> Settings
                     </h2>
                     <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close settings">

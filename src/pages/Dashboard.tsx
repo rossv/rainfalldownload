@@ -7,7 +7,8 @@ import { StationSearch } from '../components/StationSearch';
 import { RainfallChart } from '../components/RainfallChart';
 import { createProvider, getProviderCapabilities, listProviders } from '../services/providers';
 import type { Station, UnifiedTimeSeries, DataSource } from '../types';
-import { downloadCSV, downloadSWMM } from '../lib/export';
+import { downloadCSV, downloadSWMM, downloadJSON } from '../lib/export';
+import { geocodeCity, type GeocodeResult } from '../services/geocoding';
 import { Loader2, Download, Search as SearchIcon, ArrowLeft, RefreshCw, Map } from 'lucide-react';
 import { AvailabilityTimeline } from '../components/AvailabilityTimeline';
 import { StatusCenter } from '../components/StatusCenter';
@@ -68,7 +69,7 @@ async function runWithConcurrency<T, TResult>(
 }
 
 export function Dashboard() {
-    const { preferences, setUnits, setProvider } = usePreferences();
+    const { preferences, setUnits, setProvider, setDefaultDataset } = usePreferences();
 
     const [stations, setStations] = useState<Station[]>([]);
     const [selectedStations, setSelectedStations] = useState<Station[]>([]);
@@ -85,6 +86,7 @@ export function Dashboard() {
     const [coordinateInput, setCoordinateInput] = useState({ lat: '', lon: '' });
     const [coordinateError, setCoordinateError] = useState<string | null>(null);
     const [, setVirtualStation] = useState<Station | null>(null);
+    const [geocodeOptions, setGeocodeOptions] = useState<GeocodeResult[] | null>(null);
 
     // View Mode: 'discovery' (Map focused) vs 'configuration' (Params focused)
     const [viewMode, setViewMode] = useState<'discovery' | 'configuration'>('discovery');
@@ -178,8 +180,12 @@ export function Dashboard() {
         setStatusTasks(prev => [...prev, { id, message, status }]);
         setTimeout(() => setStatusTasks(prev => prev.filter(t => t.id !== id)), durationMs);
     }, []);
-    const [selectedDataTypes, setSelectedDataTypes] = useState<string[]>(['PRCP']);
-    const [datasetId, setDatasetId] = useState<string>(NOAA_DATASET_WHITELIST[0]);
+    const [selectedDataTypes, setSelectedDataTypes] = useState<string[]>(
+        preferences.defaultDataTypes.length > 0 ? preferences.defaultDataTypes : ['PRCP']
+    );
+    const [datasetId, setDatasetId] = useState<string>(
+        preferences.defaultDatasetId || NOAA_DATASET_WHITELIST[0]
+    );
     const [hrrrProductType, setHrrrProductType] = useState<'analysis' | 'forecast'>('forecast');
     const [hrrrAggregationWindow, setHrrrAggregationWindow] = useState<'hourly' | '3-hour' | '6-hour'>('hourly');
     const [hrrrLeadPreset, setHrrrLeadPreset] = useState<'0-18' | '0-48'>('0-18');
@@ -355,11 +361,25 @@ export function Dashboard() {
 
     const performTextSearch = async (query: string, silent = false) => {
         if (!dataSource || !query.trim()) return;
+
+        setGeocodeOptions(null);
         const requestId = beginSearchRequest();
 
         if (!silent) setSearchLoading(true);
 
         try {
+            // For user-initiated searches, geocode first to offer disambiguation
+            if (!silent) {
+                const geocodeResults = await geocodeCity(query.trim());
+                if (!isLatestSearchRequest(requestId)) return;
+
+                if (geocodeResults.length > 1) {
+                    setGeocodeOptions(geocodeResults);
+                    setSearchLoading(false);
+                    return;
+                }
+            }
+
             const results = await dataSource.findStationsByCity(query, undefined, undefined, { datasetId, datatypes: selectedDataTypes });
             if (!isLatestSearchRequest(requestId)) return;
 
@@ -377,6 +397,24 @@ export function Dashboard() {
             if (!silent && isLatestSearchRequest(requestId)) searchError(error, 'Failed to search stations.');
         } finally {
             if (!silent && isLatestSearchRequest(requestId)) setSearchLoading(false);
+        }
+    };
+
+    const handleGeoOptionSelect = async (option: GeocodeResult) => {
+        if (!dataSource) return;
+        setGeocodeOptions(null);
+        const requestId = beginSearchRequest();
+        setSearchLoading(true);
+        try {
+            const results = await dataSource.findStationsByCoords(option.lat, option.lon, undefined, undefined, { datasetId, datatypes: selectedDataTypes });
+            if (!isLatestSearchRequest(requestId)) return;
+            handleStationsFound(results, [option.lat, option.lon]);
+            setLastSearchType('text');
+            setLastSearchCoords(null);
+        } catch (error) {
+            if (isLatestSearchRequest(requestId)) searchError(error, 'Failed to find stations near location.');
+        } finally {
+            if (isLatestSearchRequest(requestId)) setSearchLoading(false);
         }
     };
 
@@ -459,19 +497,20 @@ export function Dashboard() {
     };
 
 
-    // Auto-refresh search when Dataset or Datatypes change
+    // Auto-refresh search when Dataset or Datatypes change (debounced to prevent stacking)
     useEffect(() => {
-        // Debounce or just run?
-        // Run only if we have a valid last search state.
-        if (isPointSelectionMode) {
-            return;
-        }
-        if (lastSearchType === 'text' && searchQuery) {
-            performTextSearch(searchQuery, true); // silent refresh
-        } else if (lastSearchType === 'coords' && lastSearchCoords) {
-            performCoordsSearch(lastSearchCoords[0], lastSearchCoords[1], true);
-        }
-    }, [datasetId, dataSource, selectedDataTypes, isPointSelectionMode]); // filtered to just datasetId change mainly. Added dataSource for safety.
+        if (isPointSelectionMode) return;
+
+        const timerId = setTimeout(() => {
+            if (lastSearchType === 'text' && searchQuery) {
+                performTextSearch(searchQuery, true);
+            } else if (lastSearchType === 'coords' && lastSearchCoords) {
+                performCoordsSearch(lastSearchCoords[0], lastSearchCoords[1], true);
+            }
+        }, 300);
+
+        return () => clearTimeout(timerId);
+    }, [datasetId, dataSource, selectedDataTypes, isPointSelectionMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // -------------------------------------------------------------------------
     // --- Logic Restored (Availability, Fetching, Status) ---
@@ -566,6 +605,18 @@ export function Dashboard() {
             return;
         }
 
+        const maxDays = providerCapabilities?.maxDateRangeDays;
+        if (maxDays) {
+            const diffDays = (new Date(dateRange.end).getTime() - new Date(dateRange.start).getTime()) / 86400000;
+            if (diffDays > maxDays) {
+                pushToast(
+                    `Date range exceeds the ${maxDays}-day limit for ${providerCapabilities?.name ?? 'this provider'}. Please shorten the range.`,
+                    'error'
+                );
+                return;
+            }
+        }
+
         const stationsToFetch = Array.from(new Map(selectedStations.map(station => [station.id, station])).values());
         const buildFetchSnapshot = () => ({
             stationIds: stationsToFetch.map(station => station.id).sort(),
@@ -623,7 +674,17 @@ export function Dashboard() {
 
         try {
             const concurrency = preferences.providerId === 'noaa' ? NOAA_FETCH_CONCURRENCY : DEFAULT_FETCH_CONCURRENCY;
-            const results = await runWithConcurrency(stationsToFetch, concurrency, fetchStationData);
+            let completedCount = 0;
+            const fetchStationDataWithProgress = async (station: Station): Promise<StationFetchResult> => {
+                const result = await fetchStationData(station);
+                completedCount++;
+                setStatusTasks(prev => prev.map(t => t.id === taskId
+                    ? { ...t, message: `Downloading... ${completedCount}/${stationsToFetch.length} stations` }
+                    : t
+                ));
+                return result;
+            };
+            const results = await runWithConcurrency(stationsToFetch, concurrency, fetchStationDataWithProgress);
 
             const successes = results.filter((result): result is Extract<StationFetchResult, { status: 'success' }> => result.status === 'success');
             const empties = results.filter((result): result is Extract<StationFetchResult, { status: 'empty' }> => result.status === 'empty');
@@ -894,6 +955,28 @@ export function Dashboard() {
                             />
                         </section>
 
+                        {geocodeOptions && (
+                            <div className="flex flex-col gap-1 p-3 bg-card border border-border rounded-xl shadow-sm">
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Multiple locations found — select one:</p>
+                                {geocodeOptions.map((option, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => handleGeoOptionSelect(option)}
+                                        className="text-left text-sm px-3 py-2 rounded-md hover:bg-accent transition-colors truncate"
+                                        title={option.displayName}
+                                    >
+                                        {option.displayName}
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={() => setGeocodeOptions(null)}
+                                    className="text-xs text-muted-foreground hover:text-foreground mt-1 text-left"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        )}
+
                         <div className="h-[56vh] min-h-[360px] sm:h-[52vh] shrink-0 lg:flex-1 lg:h-auto lg:min-h-[200px] border border-border rounded-xl overflow-hidden shadow-sm relative">
                             <StationMap
                                 stations={stations}
@@ -1109,6 +1192,18 @@ export function Dashboard() {
                                 </div>
 
 
+                                <div className="flex justify-end">
+                                    <button
+                                        onClick={() => {
+                                            setDefaultDataset(datasetId, selectedDataTypes);
+                                            pushToast('Default dataset and datatypes saved.', 'success');
+                                        }}
+                                        className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors"
+                                    >
+                                        Save as defaults
+                                    </button>
+                                </div>
+
                                 <div>
                                     <label className="text-sm font-medium mb-1 block">Display Units</label>
                                     <div className="flex bg-muted p-1 rounded-lg">
@@ -1175,6 +1270,15 @@ export function Dashboard() {
                                 >
                                     <Download className="h-4 w-4 shrink-0" />
                                     <span>Download SWMM</span>
+                                </button>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); downloadJSON(selectedStations, rainfallData); }}
+                                    className="flex-1 max-w-[160px] px-3 py-2 border border-border bg-background hover:bg-accent text-accent-foreground text-xs font-medium rounded-lg transition-colors flex flex-col justify-center items-center gap-1.5 whitespace-normal text-center h-auto leading-tight"
+                                    aria-label="Download JSON"
+                                    title="Download JSON"
+                                >
+                                    <Download className="h-4 w-4 shrink-0" />
+                                    <span>Download JSON</span>
                                 </button>
                             </div>
 

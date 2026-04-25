@@ -14,17 +14,21 @@ describe('geocodeCity', () => {
         localStorage.clear();
     });
 
-    it('uses the proxy endpoint and caches successful lookups', async () => {
-        mockedGetJsonWithRetry.mockResolvedValueOnce([{ lat: '40.7128', lon: '-74.0060' }]);
+    it('returns an array and caches successful lookups', async () => {
+        mockedGetJsonWithRetry.mockResolvedValueOnce([
+            { lat: '40.7128', lon: '-74.0060', display_name: 'New York, NY, USA' }
+        ]);
 
         const first = await geocodeCity('New York, NY');
         const second = await geocodeCity('new york, ny');
 
-        expect(first).toEqual({ lat: 40.7128, lon: -74.006 });
-        expect(second).toEqual({ lat: 40.7128, lon: -74.006 });
+        expect(first).toHaveLength(1);
+        expect(first[0]).toMatchObject({ lat: 40.7128, lon: -74.006 });
+        expect(second).toHaveLength(1);
+        expect(second[0]).toMatchObject({ lat: 40.7128, lon: -74.006 });
         expect(mockedGetJsonWithRetry).toHaveBeenCalledTimes(1);
         expect(mockedGetJsonWithRetry).toHaveBeenCalledWith('/api/nominatim', {
-            params: { q: 'New York, NY', format: 'json', limit: 1 }
+            params: { q: 'New York, NY', format: 'json', limit: 5 }
         }, { retries: 2, backoffMs: 400 });
     });
 
@@ -39,8 +43,28 @@ describe('geocodeCity', () => {
 
         resolveRequest?.([{ lat: '40.4406', lon: '-79.9959' }]);
 
-        await expect(firstPromise).resolves.toEqual({ lat: 40.4406, lon: -79.9959 });
-        await expect(secondPromise).resolves.toEqual({ lat: 40.4406, lon: -79.9959 });
+        const firstResult = await firstPromise;
+        const secondResult = await secondPromise;
+        expect(firstResult[0]).toMatchObject({ lat: 40.4406, lon: -79.9959 });
+        expect(secondResult[0]).toMatchObject({ lat: 40.4406, lon: -79.9959 });
         expect(mockedGetJsonWithRetry).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns multiple results for ambiguous queries', async () => {
+        mockedGetJsonWithRetry.mockResolvedValueOnce([
+            { lat: '39.7817', lon: '-89.6501', display_name: 'Springfield, Illinois, USA' },
+            { lat: '37.2153', lon: '-93.2982', display_name: 'Springfield, Missouri, USA' }
+        ]);
+
+        const results = await geocodeCity('Springfield');
+        expect(results).toHaveLength(2);
+        expect(results[0].displayName).toBe('Springfield, Illinois, USA');
+        expect(results[1].displayName).toBe('Springfield, Missouri, USA');
+    });
+
+    it('returns empty array when no results', async () => {
+        mockedGetJsonWithRetry.mockResolvedValueOnce([]);
+        const results = await geocodeCity('xyznonexistentplace123');
+        expect(results).toEqual([]);
     });
 });

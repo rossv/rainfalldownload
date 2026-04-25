@@ -5,18 +5,18 @@ const NOMINATIM_BASE = import.meta.env.VITE_NOMINATIM_PROXY_BASE
 const CACHE_PREFIX = 'geocode_cache_v1_';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-type GeocodeResult = { lat: number; lon: number };
+export type GeocodeResult = { lat: number; lon: number; displayName: string };
 type CacheEntry<T> = { value: T; timestamp: number };
-type NominatimResult = { lat?: string; lon?: string };
+type NominatimResult = { lat?: string; lon?: string; display_name?: string };
 
-const inflightRequests = new Map<string, Promise<GeocodeResult | null>>();
+const inflightRequests = new Map<string, Promise<GeocodeResult[]>>();
 
-const getCache = (key: string): GeocodeResult | null => {
+const getCache = (key: string): GeocodeResult[] | null => {
     try {
         const raw = localStorage.getItem(CACHE_PREFIX + key);
         if (!raw) return null;
 
-        const entry = JSON.parse(raw) as CacheEntry<GeocodeResult>;
+        const entry = JSON.parse(raw) as CacheEntry<GeocodeResult[]>;
         if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
             localStorage.removeItem(CACHE_PREFIX + key);
             return null;
@@ -28,9 +28,9 @@ const getCache = (key: string): GeocodeResult | null => {
     }
 };
 
-const setCache = (key: string, value: GeocodeResult) => {
+const setCache = (key: string, value: GeocodeResult[]) => {
     try {
-        const entry: CacheEntry<GeocodeResult> = {
+        const entry: CacheEntry<GeocodeResult[]> = {
             value,
             timestamp: Date.now()
         };
@@ -40,9 +40,9 @@ const setCache = (key: string, value: GeocodeResult) => {
     }
 };
 
-export async function geocodeCity(city: string): Promise<GeocodeResult | null> {
+export async function geocodeCity(city: string): Promise<GeocodeResult[]> {
     const query = city.trim();
-    if (!query) return null;
+    if (!query) return [];
 
     const cacheKey = query.toLowerCase();
     const cached = getCache(cacheKey);
@@ -55,28 +55,37 @@ export async function geocodeCity(city: string): Promise<GeocodeResult | null> {
         try {
             console.log(`[RainfallDownloader] Geocoding city: ${query}`);
             const payload = await getJsonWithRetry<NominatimResult[]>(NOMINATIM_BASE, {
-                params: { q: query, format: 'json', limit: 1 }
+                params: { q: query, format: 'json', limit: 5 }
             }, { retries: 2, backoffMs: 400 });
 
             if (!Array.isArray(payload) || payload.length === 0) {
                 console.warn('[RainfallDownloader] Geocoding returned no results');
-                return null;
+                return [];
             }
 
-            const lat = Number(payload[0]?.lat);
-            const lon = Number(payload[0]?.lon);
+            const results: GeocodeResult[] = payload
+                .map(item => {
+                    const lat = Number(item.lat);
+                    const lon = Number(item.lon);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+                    return {
+                        lat,
+                        lon,
+                        displayName: item.display_name ?? `${lat.toFixed(4)}, ${lon.toFixed(4)}`
+                    };
+                })
+                .filter((r): r is GeocodeResult => r !== null);
 
-            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+            if (results.length === 0) {
                 console.warn('[RainfallDownloader] Geocoding returned invalid coordinates');
-                return null;
+                return [];
             }
 
-            const result = { lat, lon };
-            setCache(cacheKey, result);
-            return result;
+            setCache(cacheKey, results);
+            return results;
         } catch (error) {
             console.error('[RainfallDownloader] Geocoding failed:', error);
-            return null;
+            return [];
         } finally {
             inflightRequests.delete(cacheKey);
         }
@@ -85,4 +94,3 @@ export async function geocodeCity(city: string): Promise<GeocodeResult | null> {
     inflightRequests.set(cacheKey, request);
     return request;
 }
-

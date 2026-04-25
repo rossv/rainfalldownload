@@ -159,3 +159,28 @@ export function downloadSWMM(stations: Station[], data: UnifiedTimeSeries[], dat
 
     saveAs(blob, filename);
 }
+
+export function downloadJSON(stations: Station[], data: UnifiedTimeSeries[]) {
+    const payload = {
+        exportedAt: new Date().toISOString(),
+        stations: stations.map(s => ({
+            id: s.id,
+            name: s.name,
+            latitude: s.latitude,
+            longitude: s.longitude,
+            source: s.source
+        })),
+        records: data.map(d => ({
+            stationId: d.stationId,
+            timestamp: d.timestamp,
+            value: d.value,
+            parameter: d.parameter,
+            interval: d.interval,
+            qualityFlag: d.qualityFlag,
+            originalUnits: d.originalUnits
+        }))
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const filename = `rainfall_export_${new Date().toISOString().split('T')[0]}.json`;
+    saveAs(blob, filename);
+}
