@@ -10,6 +10,8 @@ interface Preferences {
     credentials: Record<ProviderId, ProviderCredentials>;
     units: 'standard' | 'metric';
     darkMode: boolean;
+    defaultDatasetId: string;
+    defaultDataTypes: string[];
 }
 
 const buildDefaultCredentials = (): Record<ProviderId, ProviderCredentials> => {
@@ -29,7 +31,9 @@ const DEFAULT_PREFS: Preferences = {
     providerId: 'noaa',
     credentials: buildDefaultCredentials(),
     units: 'standard',
-    darkMode: false
+    darkMode: false,
+    defaultDatasetId: '',
+    defaultDataTypes: []
 };
 
 const withDefaults = (stored: unknown): Preferences => {
@@ -59,7 +63,9 @@ const withDefaults = (stored: unknown): Preferences => {
         providerId,
         credentials,
         units: stored.units === 'metric' ? 'metric' : 'standard',
-        darkMode: Boolean(stored.darkMode)
+        darkMode: Boolean(stored.darkMode),
+        defaultDatasetId: typeof stored.defaultDatasetId === 'string' ? stored.defaultDatasetId : defaults.defaultDatasetId,
+        defaultDataTypes: Array.isArray(stored.defaultDataTypes) ? stored.defaultDataTypes as string[] : defaults.defaultDataTypes
     };
 };
 
@@ -69,6 +75,7 @@ interface PreferencesContextValue {
     setProvider: (providerId: Preferences['providerId']) => void;
     toggleDarkMode: () => void;
     setUnits: (units: 'standard' | 'metric') => void;
+    setDefaultDataset: (datasetId: string, dataTypes: string[]) => void;
 }
 
 const PreferencesContext = createContext<PreferencesContextValue | null>(null);
@@ -112,9 +119,11 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     }));
     const toggleDarkMode = () => setPrefs(p => ({ ...p, darkMode: !p.darkMode }));
     const setUnits = (units: 'standard' | 'metric') => setPrefs(p => ({ ...p, units }));
+    const setDefaultDataset = (defaultDatasetId: string, defaultDataTypes: string[]) =>
+        setPrefs(p => ({ ...p, defaultDatasetId, defaultDataTypes }));
 
     return (
-        <PreferencesContext.Provider value={{ preferences: prefs, updateCredentials, setProvider, toggleDarkMode, setUnits }}>
+        <PreferencesContext.Provider value={{ preferences: prefs, updateCredentials, setProvider, toggleDarkMode, setUnits, setDefaultDataset }}>
             {children}
         </PreferencesContext.Provider>
     );

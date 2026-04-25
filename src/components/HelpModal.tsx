@@ -1,5 +1,6 @@
 import { X, HelpCircle, FileText, Info } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface HelpModalProps {
     isOpen: boolean;
@@ -10,14 +11,16 @@ type Tab = 'help' | 'changelog' | 'acknowledgements';
 
 export function HelpModal({ isOpen, onClose }: HelpModalProps) {
     const [activeTab, setActiveTab] = useState<Tab>('help');
+    const dialogRef = useRef<HTMLDivElement>(null);
+    useFocusTrap(dialogRef, isOpen, onClose);
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-card border border-border rounded-lg shadow-lg max-w-2xl w-full flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="help-title" className="bg-card border border-border rounded-lg shadow-lg max-w-2xl w-full flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center p-6 border-b border-border">
-                    <h2 className="text-xl font-bold flex items-center gap-2">
+                    <h2 id="help-title" className="text-xl font-bold flex items-center gap-2">
                         <HelpCircle className="h-5 w-5" /> Help & Information
                     </h2>
                     <button onClick={onClose} className="text-muted-foreground hover:text-foreground">

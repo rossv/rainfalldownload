@@ -1,5 +1,6 @@
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { useMemo, useState } from 'react';
+import { cn } from '../lib/utils';
 import { formatDate } from '../lib/dateUtils';
 import type { UnifiedTimeSeries, Station } from '../types';
 
@@ -27,32 +28,25 @@ const COLORS = [
 
 export function RainfallChart({ data, units, stations, title }: ChartProps) {
     const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
+    const [chartType, setChartType] = useState<'bar' | 'line' | 'area'>('bar');
 
     // Safe ID helper for Recharts dataKeys (avoids issues with colons/dots)
     const safeId = (id: string) => String(id).replace(/[:.]/g, '_');
 
     // Process data into "wide" format for Recharts
     // { date: "2023-01-01", station_A: 1.2, station_B: 0.5, ... }
-    const { chartData, stationIds, originalIds, stationStats } = useMemo(() => {
-        if (data.length === 0) return { chartData: [], stationIds: [], originalIds: new Map(), stationStats: [] };
+    const { chartData, stationIds, originalIds, stationStats, flagMap } = useMemo(() => {
+        if (data.length === 0) return { chartData: [], stationIds: [], originalIds: new Map(), stationStats: [], flagMap: new Map<string, string>() };
 
         const grouped = new Map<string, any>();
         const ids = new Set<string>();
         const idMap = new Map<string, string>(); // safeId -> originalId
         const stationDataMap = new Map<string, { timestamp: Date, value: number }[]>();
+        const flags = new Map<string, string>(); // key: `${timestamp}|${safeId}`
 
         data.forEach(d => {
             const timeStr = d.timestamp;
             const timeObj = new Date(d.timestamp);
-            // const simpleDateStr = dateStr.split('T')[0]; // Removed unused variable
-            // Actually existing chart uses split('T')[0] which implies daily aggregation or simply ignoring time for the axis label if repeated?
-            // The original code used: const dateStr = d.date.split('T')[0]; which merges same-day data? 
-            // If we have 15-min data, splitting by T[0] would override keys. 
-            // LET'S CHECK: The existing code WAS doing grouped.set(dateStr...) 
-            // If the data is 15-min, this would clobber previous entries for the same day.
-            // Assumption: The previous code might have been assuming daily data or just buggy for sub-daily.
-            // Requirement mentions "Peak 1-hr intensity" which implies sub-daily data.
-            // FIX: Use full date string as key for unique time points.
 
             if (!grouped.has(timeStr)) {
                 grouped.set(timeStr, { timestamp: d.timestamp });
@@ -63,6 +57,10 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
                 grouped.get(timeStr)[sId] = d.value;
                 ids.add(sId);
                 idMap.set(sId, d.stationId);
+
+                if (d.qualityFlag) {
+                    flags.set(`${timeStr}|${sId}`, d.qualityFlag);
+                }
 
                 if (!stationDataMap.has(d.stationId)) {
                     stationDataMap.set(d.stationId, []);
@@ -155,7 +153,7 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
             };
         }).filter(Boolean);
 
-        return { chartData: sorted, stationIds: Array.from(ids), originalIds: idMap, stationStats: stats };
+        return { chartData: sorted, stationIds: Array.from(ids), originalIds: idMap, stationStats: stats, flagMap: flags };
     }, [data, stations]);
 
     // Calculate global max Y value for stable axis
@@ -243,86 +241,58 @@ export function RainfallChart({ data, units, stations, title }: ChartProps) {
 
             {/* Right Col: Chart */}
             <div className="flex-1 min-w-0">
-                <h3 className="text-lg font-semibold mb-2 flex items-center gap-2 md:hidden">
-                    {title}
-                    <span className="text-xs font-normal text-muted-foreground px-2 py-0.5 bg-muted rounded">
-                        {units === 'metric' ? 'mm' : 'in'}
-                    </span>
-                </h3>
+                <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-semibold flex items-center gap-2 md:hidden">
+                        {title}
+                        <span className="text-xs font-normal text-muted-foreground px-2 py-0.5 bg-muted rounded">
+                            {units === 'metric' ? 'mm' : 'in'}
+                        </span>
+                    </h3>
+                    <div className="flex bg-muted rounded-md p-0.5 text-xs ml-auto">
+                        {(['bar', 'line', 'area'] as const).map(type => (
+                            <button
+                                key={type}
+                                onClick={() => setChartType(type)}
+                                className={cn(
+                                    'px-2.5 py-1 rounded transition-all capitalize',
+                                    chartType === type ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                                )}
+                            >
+                                {type}
+                            </button>
+                        ))}
+                    </div>
+                </div>
                 <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                            <XAxis
-                                dataKey="timestamp"
-                                tick={{ fontSize: 12 }}
-                                tickFormatter={(val) => {
-                                    const d = new Date(val);
-                                    return formatDate(d) +
-                                        (d.getHours() !== 0 ? ` ${d.getHours()}h` : '');
-                                }}
-                                minTickGap={30}
-                            />
-                            <YAxis
-                                tick={{ fontSize: 12 }}
-                                width={40}
-                                domain={[0, maxY]}
-                                tickFormatter={(val) => Number(val).toFixed(2)}
-                            />
-                            <Tooltip
-                                contentStyle={{ backgroundColor: 'hsl(var(--popover))', borderColor: 'hsl(var(--border))', borderRadius: 'var(--radius)' }}
-                                itemStyle={{ color: 'hsl(var(--foreground))' }}
-                                labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
-                                labelFormatter={(label) => {
-                                    const d = new Date(label);
-                                    return `${formatDate(d)} ${d.toLocaleTimeString()}`;
-                                }}
-                                filterNull={true}
-                                formatter={(value: any, name: any) => {
-                                    // Don't show tooltip for hidden series
-                                    if (hiddenSeries.has(String(name))) return [] as any;
-
-                                    const val = Number(value);
-                                    const formattedVal = isNaN(val) ? value : val.toFixed(2);
-                                    // Look up original ID then find station
-                                    const originalId = originalIds.get(String(name));
-                                    const station = stations.find(s => s.id === originalId);
-                                    return [formattedVal, station ? station.name : (originalId || name)];
-                                }}
-                            />
-                            <Legend
-                                onClick={handleLegendClick}
-                                wrapperStyle={{ cursor: 'pointer', paddingTop: '10px' }}
-                                formatter={(value, entry: any) => {
-                                    const { dataKey } = entry;
-                                    const originalId = originalIds.get(String(value));
-                                    const station = stations.find(s => s.id === originalId);
-                                    const isHidden = hiddenSeries.has(dataKey);
-                                    return (
-                                        <span style={{ opacity: isHidden ? 0.3 : 1, transition: 'opacity 0.2s', fontSize: '12px' }}>
-                                            {station ? station.name : (originalId || value)}
-                                        </span>
-                                    );
-                                }}
-                            />
-                            {stationIds.map((id, index) => {
-                                const isHidden = hiddenSeries.has(id);
-                                return (
-                                    <Bar
-                                        key={id}
-                                        dataKey={id}
-                                        name={id} // We use safe ID as key, but legend formatter handles display
-                                        fill={COLORS[index % COLORS.length]}
-                                        radius={[2, 2, 0, 0]}
-                                        maxBarSize={50}
-                                        isAnimationActive={false}
-                                        // Use opacity instead of hide to preserve layout space
-                                        opacity={isHidden ? 0 : 1}
-                                        style={{ pointerEvents: isHidden ? 'none' : 'auto' }}
-                                    />
-                                );
-                            })}
-                        </BarChart>
+                        {chartType === 'line' ? (
+                            <LineChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                                <XAxis dataKey="timestamp" tick={{ fontSize: 12 }} tickFormatter={(val) => { const d = new Date(val); return formatDate(d) + (d.getHours() !== 0 ? ` ${d.getHours()}h` : ''); }} minTickGap={30} />
+                                <YAxis tick={{ fontSize: 12 }} width={40} domain={[0, maxY]} tickFormatter={(val) => Number(val).toFixed(2)} />
+                                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', borderColor: 'hsl(var(--border))', borderRadius: 'var(--radius)' }} itemStyle={{ color: 'hsl(var(--foreground))' }} labelStyle={{ color: 'hsl(var(--muted-foreground))' }} labelFormatter={(label) => { const d = new Date(label); return `${formatDate(d)} ${d.toLocaleTimeString()}`; }} filterNull={true} formatter={(value: any, name: any, item: any) => { if (hiddenSeries.has(String(name))) return [] as any; const val = Number(value); const formattedVal = isNaN(val) ? value : val.toFixed(2); const originalId = originalIds.get(String(name)); const station = stations.find(s => s.id === originalId); const stationLabel = station ? station.name : (originalId || name); const timestamp = item?.payload?.timestamp; const flag = timestamp ? flagMap.get(`${timestamp}|${String(name)}`) : undefined; return [flag ? `${formattedVal} [${flag}]` : formattedVal, stationLabel]; }} />
+                                <Legend onClick={handleLegendClick} wrapperStyle={{ cursor: 'pointer', paddingTop: '10px' }} formatter={(value, entry: any) => { const originalId = originalIds.get(String(value)); const station = stations.find(s => s.id === originalId); const isHidden = hiddenSeries.has(entry.dataKey); return <span style={{ opacity: isHidden ? 0.3 : 1, transition: 'opacity 0.2s', fontSize: '12px' }}>{station ? station.name : (originalId || value)}</span>; }} />
+                                {stationIds.map((id, index) => { const isHidden = hiddenSeries.has(id); return <Line key={id} dataKey={id} name={id} stroke={COLORS[index % COLORS.length]} dot={false} strokeWidth={2} isAnimationActive={false} opacity={isHidden ? 0 : 1} style={{ pointerEvents: isHidden ? 'none' : 'auto' }} />; })}
+                            </LineChart>
+                        ) : chartType === 'area' ? (
+                            <AreaChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                                <XAxis dataKey="timestamp" tick={{ fontSize: 12 }} tickFormatter={(val) => { const d = new Date(val); return formatDate(d) + (d.getHours() !== 0 ? ` ${d.getHours()}h` : ''); }} minTickGap={30} />
+                                <YAxis tick={{ fontSize: 12 }} width={40} domain={[0, maxY]} tickFormatter={(val) => Number(val).toFixed(2)} />
+                                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', borderColor: 'hsl(var(--border))', borderRadius: 'var(--radius)' }} itemStyle={{ color: 'hsl(var(--foreground))' }} labelStyle={{ color: 'hsl(var(--muted-foreground))' }} labelFormatter={(label) => { const d = new Date(label); return `${formatDate(d)} ${d.toLocaleTimeString()}`; }} filterNull={true} formatter={(value: any, name: any, item: any) => { if (hiddenSeries.has(String(name))) return [] as any; const val = Number(value); const formattedVal = isNaN(val) ? value : val.toFixed(2); const originalId = originalIds.get(String(name)); const station = stations.find(s => s.id === originalId); const stationLabel = station ? station.name : (originalId || name); const timestamp = item?.payload?.timestamp; const flag = timestamp ? flagMap.get(`${timestamp}|${String(name)}`) : undefined; return [flag ? `${formattedVal} [${flag}]` : formattedVal, stationLabel]; }} />
+                                <Legend onClick={handleLegendClick} wrapperStyle={{ cursor: 'pointer', paddingTop: '10px' }} formatter={(value, entry: any) => { const originalId = originalIds.get(String(value)); const station = stations.find(s => s.id === originalId); const isHidden = hiddenSeries.has(entry.dataKey); return <span style={{ opacity: isHidden ? 0.3 : 1, transition: 'opacity 0.2s', fontSize: '12px' }}>{station ? station.name : (originalId || value)}</span>; }} />
+                                {stationIds.map((id, index) => { const isHidden = hiddenSeries.has(id); return <Area key={id} dataKey={id} name={id} stroke={COLORS[index % COLORS.length]} fill={COLORS[index % COLORS.length]} fillOpacity={0.15} dot={false} strokeWidth={1.5} isAnimationActive={false} opacity={isHidden ? 0 : 1} style={{ pointerEvents: isHidden ? 'none' : 'auto' }} />; })}
+                            </AreaChart>
+                        ) : (
+                            <BarChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                                <XAxis dataKey="timestamp" tick={{ fontSize: 12 }} tickFormatter={(val) => { const d = new Date(val); return formatDate(d) + (d.getHours() !== 0 ? ` ${d.getHours()}h` : ''); }} minTickGap={30} />
+                                <YAxis tick={{ fontSize: 12 }} width={40} domain={[0, maxY]} tickFormatter={(val) => Number(val).toFixed(2)} />
+                                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', borderColor: 'hsl(var(--border))', borderRadius: 'var(--radius)' }} itemStyle={{ color: 'hsl(var(--foreground))' }} labelStyle={{ color: 'hsl(var(--muted-foreground))' }} labelFormatter={(label) => { const d = new Date(label); return `${formatDate(d)} ${d.toLocaleTimeString()}`; }} filterNull={true} formatter={(value: any, name: any, item: any) => { if (hiddenSeries.has(String(name))) return [] as any; const val = Number(value); const formattedVal = isNaN(val) ? value : val.toFixed(2); const originalId = originalIds.get(String(name)); const station = stations.find(s => s.id === originalId); const stationLabel = station ? station.name : (originalId || name); const timestamp = item?.payload?.timestamp; const flag = timestamp ? flagMap.get(`${timestamp}|${String(name)}`) : undefined; return [flag ? `${formattedVal} [${flag}]` : formattedVal, stationLabel]; }} />
+                                <Legend onClick={handleLegendClick} wrapperStyle={{ cursor: 'pointer', paddingTop: '10px' }} formatter={(value, entry: any) => { const originalId = originalIds.get(String(value)); const station = stations.find(s => s.id === originalId); const isHidden = hiddenSeries.has(entry.dataKey); return <span style={{ opacity: isHidden ? 0.3 : 1, transition: 'opacity 0.2s', fontSize: '12px' }}>{station ? station.name : (originalId || value)}</span>; }} />
+                                {stationIds.map((id, index) => { const isHidden = hiddenSeries.has(id); return <Bar key={id} dataKey={id} name={id} fill={COLORS[index % COLORS.length]} radius={[2, 2, 0, 0] as [number, number, number, number]} maxBarSize={50} isAnimationActive={false} opacity={isHidden ? 0 : 1} style={{ pointerEvents: isHidden ? 'none' : 'auto' }} />; })}
+                            </BarChart>
+                        )}
                     </ResponsiveContainer>
                 </div>
             </div>
