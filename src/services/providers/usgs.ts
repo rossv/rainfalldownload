@@ -2,8 +2,19 @@
 import type { DataSource, DataSourceCapabilities, UnifiedTimeSeries, Station, DataType } from '../../types';
 import { getJsonWithRetry } from '../http';
 
+/**
+ * Base URL for USGS WaterServices.
+ * In dev mode, routes through Vite proxy to avoid CORS issues.
+ * The proxy rewrites /api/usgs → waterservices.usgs.gov/nwis.
+ * In production, this must be configured via VITE_USGS_PROXY_BASE
+ * (e.g., a CORS proxy or serverless function).
+ */
+const BASE_USGS = import.meta.env.VITE_USGS_PROXY_BASE
+    ?? (import.meta.env.DEV ? '/api/usgs' : 'https://waterservices.usgs.gov/nwis');
+
 const USGS_DT_CACHE_PREFIX = 'usgs_dt_cache_v1_';
 const USGS_DT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_PARAMETER_CODES = '00045,00060,00065';
 
 function getUsgsCache(key: string): DataType[] | null {
     try {
@@ -26,6 +37,11 @@ function setUsgsCache(key: string, value: DataType[]) {
     } catch {
         // ignore quota errors
     }
+}
+
+/** Check if a search query looks like a USGS site number (8-15 digits). */
+export function isUsgsSiteId(query: string): boolean {
+    return /^\d{8,15}$/.test(query.trim());
 }
 
 export const USGS_CAPABILITIES: DataSourceCapabilities = {
@@ -51,13 +67,17 @@ export class NwisService implements DataSource {
     }
 
     async findStations(query: string): Promise<Station[]> {
-        if (/^\d{8,15}$/.test(query.trim())) {
-            return this.findStationsByStateOrId(query.trim());
+        if (isUsgsSiteId(query)) {
+            return this.findStationsBySiteId(query.trim());
         }
         return [];
     }
 
     async findStationsByCity(city: string): Promise<Station[]> {
+        // If the query looks like a USGS site number, do a direct lookup
+        if (isUsgsSiteId(city)) {
+            return this.findStationsBySiteId(city.trim());
+        }
         const results = await import('../geocoding').then(m => m.geocodeCity(city));
         if (results.length === 0) return [];
         return this.findStationsByCoords(results[0].lat, results[0].lon);
@@ -67,29 +87,107 @@ export class NwisService implements DataSource {
         const buffer = 0.25;
         const bBox = `${(lon - buffer).toFixed(4)},${(lat - buffer).toFixed(4)},${(lon + buffer).toFixed(4)},${(lat + buffer).toFixed(4)}`;
 
-        // We use JSON format (default 1.1)
-        const jsonUrl = `https://waterservices.usgs.gov/nwis/site/?format=json&bBox=${bBox}&parameterCd=00045,00060,00065&hasDataTypeCd=iv&siteStatus=active`;
+        const url = `${BASE_USGS}/iv/?format=json&bBox=${bBox}&parameterCd=${DEFAULT_PARAMETER_CODES}&siteStatus=active`;
 
-        const data = await getJsonWithRetry<any>(jsonUrl, { timeout: 15000 }, { retries: 2 });
-        return (data?.value?.timeSeries || []).map((ts: any) => this.mapEstToStation(ts.sourceInfo));
-    }
-
-    private async findStationsByStateOrId(siteId: string): Promise<Station[]> {
-        const url = `https://waterservices.usgs.gov/nwis/site/?format=json&sites=${siteId}&parameterCd=00045,00060,00065&siteStatus=all`;
         const data = await getJsonWithRetry<any>(url, { timeout: 15000 }, { retries: 2 });
-        const series = data?.value?.timeSeries || [];
-        if (series.length > 0) {
-            const unique = new Map<string, Station>();
-            series.forEach((ts: any) => {
-                const st = this.mapEstToStation(ts.sourceInfo);
-                unique.set(st.id, st);
-            });
-            return Array.from(unique.values());
-        }
-        return [];
+        return this.extractStationsFromTimeSeries(data);
     }
 
-    private mapEstToStation(sourceInfo: any): Station {
+    /**
+     * Look up a single USGS site by its numeric site ID (e.g. 03049500).
+     */
+    async findStationsBySiteId(siteId: string): Promise<Station[]> {
+        const url = `${BASE_USGS}/iv/?format=json&sites=${siteId}&parameterCd=${DEFAULT_PARAMETER_CODES}&siteStatus=all&period=P1D`;
+        try {
+            const data = await getJsonWithRetry<any>(url, { timeout: 15000 }, { retries: 2 });
+            return this.extractStationsFromTimeSeries(data);
+        } catch {
+            // If IV endpoint fails (e.g. no instantaneous data), try the site endpoint
+            return this.findStationsBySiteService(siteId);
+        }
+    }
+
+    /**
+     * Fallback: use the USGS site service which returns RDB format, parsed as text.
+     */
+    private async findStationsBySiteService(siteId: string): Promise<Station[]> {
+        const url = `${BASE_USGS}/site/?format=rdb&sites=${siteId}&siteOutput=expanded&siteStatus=all`;
+        try {
+            const response = await getJsonWithRetry<any>(url, {
+                timeout: 15000,
+                responseType: 'text'
+            }, { retries: 2 });
+
+            // Parse RDB format (tab-delimited, comment lines start with #)
+            const text = typeof response === 'string' ? response : String(response);
+            return this.parseRdbSites(text);
+        } catch {
+            return [];
+        }
+    }
+
+    /**
+     * Parse USGS RDB format site data into Station objects.
+     */
+    private parseRdbSites(rdbText: string): Station[] {
+        const lines = rdbText.split('\n').filter(line => !line.startsWith('#') && line.trim().length > 0);
+        if (lines.length < 2) return [];
+
+        const headers = lines[0].split('\t').map(h => h.trim());
+        // Line 1 is format descriptors (e.g. "5s\t15s\t..."), skip it
+        const dataLines = lines.slice(2);
+
+        const getIdx = (name: string) => headers.indexOf(name);
+        const siteNoIdx = getIdx('site_no');
+        const stationNmIdx = getIdx('station_nm');
+        const latIdx = getIdx('dec_lat_va');
+        const lonIdx = getIdx('dec_long_va');
+        const altIdx = getIdx('alt_va');
+
+        if (siteNoIdx === -1) return [];
+
+        const stations: Station[] = [];
+        for (const line of dataLines) {
+            const cols = line.split('\t');
+            const siteNo = cols[siteNoIdx]?.trim();
+            if (!siteNo) continue;
+
+            const lat = latIdx >= 0 ? parseFloat(cols[latIdx]) : 0;
+            const lon = lonIdx >= 0 ? parseFloat(cols[lonIdx]) : 0;
+            const alt = altIdx >= 0 ? parseFloat(cols[altIdx]) : undefined;
+
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+
+            stations.push({
+                id: siteNo,
+                name: stationNmIdx >= 0 ? cols[stationNmIdx]?.trim() || `USGS ${siteNo}` : `USGS ${siteNo}`,
+                latitude: lat,
+                longitude: lon,
+                elevation: Number.isFinite(alt) ? alt : undefined,
+                source: 'USGS_NWIS',
+                metadata: {}
+            });
+        }
+
+        return stations;
+    }
+
+    /**
+     * Extract unique stations from USGS WaterML 1.1 JSON timeSeries response.
+     */
+    private extractStationsFromTimeSeries(data: any): Station[] {
+        const series = data?.value?.timeSeries || [];
+        const unique = new Map<string, Station>();
+        series.forEach((ts: any) => {
+            const st = this.mapSourceInfoToStation(ts.sourceInfo);
+            if (st.id !== 'unknown') {
+                unique.set(st.id, st);
+            }
+        });
+        return Array.from(unique.values());
+    }
+
+    private mapSourceInfoToStation(sourceInfo: any): Station {
         const loc = sourceInfo.geoLocation?.geogLocation || {};
         return {
             id: sourceInfo.siteCode?.[0]?.value || 'unknown',
@@ -110,7 +208,7 @@ export class NwisService implements DataSource {
         if (cached) return cached;
 
         try {
-            const url = `https://waterservices.usgs.gov/nwis/site/?format=json&sites=${stationId}&seriesCatalogOutput=true&siteStatus=all`;
+            const url = `${BASE_USGS}/site/?format=json&sites=${stationId}&seriesCatalogOutput=true&siteStatus=all`;
             const data = await getJsonWithRetry<any>(url, { timeout: 15000 }, { retries: 2 });
             const timeSeries: any[] = data?.value?.timeSeries || [];
 
@@ -169,7 +267,7 @@ export class NwisService implements DataSource {
 
         const pCodes = options.datatypes && options.datatypes.length > 0 ? options.datatypes.join(',') : '00045,00060';
 
-        const url = `https://waterservices.usgs.gov/nwis/iv/?format=json&sites=${siteList}&startDT=${start}&endDT=${end}&parameterCd=${pCodes}&siteStatus=all`;
+        const url = `${BASE_USGS}/iv/?format=json&sites=${siteList}&startDT=${start}&endDT=${end}&parameterCd=${pCodes}&siteStatus=all`;
 
         const data = await getJsonWithRetry<any>(url, { timeout: 20000 }, { retries: 2 });
         const timeSeries = data?.value?.timeSeries || [];

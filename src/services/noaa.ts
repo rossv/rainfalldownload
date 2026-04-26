@@ -362,8 +362,78 @@ export class NoaaService implements DataSource {
         return this.executeRequest<T>(targetUrl, context);
     }
 
+    /**
+     * Known NOAA station ID prefixes. If the search query starts with one of these,
+     * it's treated as a direct station ID lookup rather than a city/location search.
+     */
+    private static readonly STATION_ID_PREFIXES = ['GHCND:', 'COOP:', 'WBAN:', 'USW0', 'USC0', 'US1'];
+
+    /**
+     * Tests whether a search query looks like a NOAA station ID rather than a
+     * location/city name.
+     */
+    static isStationId(query: string): boolean {
+        const trimmed = query.trim().toUpperCase();
+        if (!trimmed) return false;
+        return NoaaService.STATION_ID_PREFIXES.some(prefix => trimmed.startsWith(prefix));
+    }
+
+    /**
+     * Look up a single station by its NOAA station ID (e.g., GHCND:US1PAAL0011).
+     * This queries the /stations/{id} endpoint directly.
+     */
+    async findStationById(stationId: string, options: DataQueryOptions = {}): Promise<Station[]> {
+        const datasetId = this.normalizeDatasetId(options.datasetId);
+        const trimmedId = stationId.trim();
+
+        // Ensure the ID has a dataset prefix
+        const qualifiedId = trimmedId.includes(':') ? trimmedId : `${datasetId}:${trimmedId}`;
+
+        const cacheKey = `station_${qualifiedId}`;
+        const cached = getCache<Station[]>(cacheKey);
+        if (cached) return cached;
+
+        try {
+            const data = await this.request<NoaaStationRecord>(
+                `/stations/${encodeURIComponent(qualifiedId)}`,
+                { datasetid: datasetId },
+                `NOAA station lookup for ${qualifiedId}`
+            );
+
+            if (!data || !data.id) return [];
+
+            const station: Station = {
+                id: data.id,
+                source: 'NOAA_CDO',
+                name: data.name || data.id,
+                latitude: data.latitude ?? 0,
+                longitude: data.longitude ?? 0,
+                elevation: isFiniteNumber(data.elevation) ? data.elevation : undefined,
+                mindate: data.mindate,
+                maxdate: data.maxdate,
+                datacoverage: isFiniteNumber(data.datacoverage) ? data.datacoverage : undefined,
+                metadata: {
+                    datacoverage: data.datacoverage,
+                    elevationUnit: data.elevationUnit
+                }
+            };
+
+            const result = [station];
+            setCache(cacheKey, result);
+            return result;
+        } catch (error) {
+            console.warn(`[RainfallDownloader] Station ID lookup failed for ${qualifiedId}:`, error);
+            return [];
+        }
+    }
+
     async findStationsByCity(city: string, limit = DEFAULT_SEARCH_LIMIT, buffer = DEFAULT_SEARCH_BUFFER, options: DataQueryOptions = {}): Promise<Station[]> {
         if (!city.trim()) return [];
+
+        // If the query looks like a station ID, do a direct lookup instead of geocoding
+        if (NoaaService.isStationId(city)) {
+            return this.findStationById(city, options);
+        }
 
         const datasetId = this.normalizeDatasetId(options.datasetId);
         const datatypes = this.normalizeDatatypes(options.datatypes, datasetId);

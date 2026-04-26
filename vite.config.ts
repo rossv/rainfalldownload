@@ -21,6 +21,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/noaa/, 'cdo-web/api/v2')
       },
+      '/api/usgs': {
+        target: 'https://waterservices.usgs.gov/',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/usgs/, 'nwis')
+      },
       '/api/nominatim': {
         target: 'https://nominatim.openstreetmap.org/',
         changeOrigin: true,
