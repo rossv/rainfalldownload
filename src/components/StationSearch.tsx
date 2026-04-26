@@ -51,16 +51,16 @@ export function StationSearch({
 
     return (
         <div className="flex flex-col gap-3">
-            <div className="overflow-x-auto pb-1">
+            <div>
                 <form
                     onSubmit={(e) => { e.preventDefault(); onSearch(); }}
-                    className="flex w-full min-w-max items-center gap-2"
+                    className="flex w-full flex-wrap items-stretch gap-2"
                 >
                     {providerId && onProviderChange && providerOptions && (
                         <select
                             value={providerId}
                             onChange={(e) => onProviderChange(e.target.value)}
-                            className="h-11 w-[192px] shrink-0 px-3 rounded-md border border-input bg-primary/5 hover:bg-primary/10 transition-colors text-xs font-semibold text-primary outline-none focus:ring-2 focus:ring-primary/20"
+                            className="h-11 w-full min-w-0 px-3 rounded-md border border-input bg-primary/5 hover:bg-primary/10 transition-colors text-xs font-semibold text-primary outline-none focus:ring-2 focus:ring-primary/20 sm:w-[192px]"
                             title="Select Data Provider"
                         >
                             {providerOptions.map(p => (
@@ -72,7 +72,7 @@ export function StationSearch({
                         <select
                             value={datasetId}
                             onChange={(e) => onDatasetChange(e.target.value)}
-                            className="h-11 w-[196px] shrink-0 px-3 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all text-xs font-medium"
+                            className="h-11 w-full min-w-0 px-3 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all text-xs font-medium sm:w-[196px]"
                             title="Select Dataset"
                         >
                             {datasetOptions.map(opt => (
@@ -81,14 +81,14 @@ export function StationSearch({
                         </select>
                     )}
                     {showTextSearch && (
-                        <div className="flex min-w-[320px] flex-1 items-center gap-2">
+                        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:flex-1 sm:flex-nowrap">
                             <input
                                 type="text"
                                 value={query}
                                 onChange={(e) => onQueryChange(e.target.value)}
                                 placeholder="Find stations by city, state, or id"
                                 aria-label="Search stations"
-                                className="h-11 min-w-[240px] flex-1 px-4 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all"
+                                className="h-11 min-w-0 flex-[1_1_220px] px-4 rounded-md border border-input bg-background/50 hover:bg-background focus:ring-2 focus:ring-ring transition-all"
                             />
                             <button
                                 type="button"
@@ -96,7 +96,7 @@ export function StationSearch({
                                 disabled={disabled}
                                 title="Use my location"
                                 aria-label="Search stations near my location"
-                                className="h-11 shrink-0 px-3 bg-secondary text-secondary-foreground border border-input rounded-md hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center"
+                                className="h-11 w-11 shrink-0 bg-secondary text-secondary-foreground border border-input rounded-md hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center"
                             >
                                 <MapPin className="h-4 w-4" />
                             </button>
@@ -104,7 +104,7 @@ export function StationSearch({
                                 type="submit"
                                 disabled={disabled}
                                 aria-label="Search stations"
-                                className="h-11 shrink-0 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                                className="h-11 w-full shrink-0 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap sm:w-auto"
                             >
                                 {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Search className="h-4 w-4" />}
                                 Search
