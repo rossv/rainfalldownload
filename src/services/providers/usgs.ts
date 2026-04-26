@@ -121,8 +121,6 @@ export class NwisService implements DataSource {
 
                 const values = ts.values?.[0];
                 const beginDT: string | undefined = values?.qualifier?.[0]?.startDate ?? ts.variable?.variableCode?.[0]?.network;
-                const endDT: string | undefined = values?.qualifier?.[0]?.endDate;
-
                 // Try to get real dates from the series catalog
                 const rawBegin: string | undefined = ts.values?.[0]?.value?.[0]?.dateTime;
                 const rawEnd: string | undefined = (() => {
