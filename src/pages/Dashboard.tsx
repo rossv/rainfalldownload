@@ -9,7 +9,7 @@ import { createProvider, getProviderCapabilities, listProviders } from '../servi
 import type { Station, UnifiedTimeSeries, DataSource } from '../types';
 import { downloadCSV, downloadSWMM, downloadJSON } from '../lib/export';
 import { geocodeCity, type GeocodeResult } from '../services/geocoding';
-import { Loader2, Download, Search as SearchIcon, ArrowLeft, RefreshCw, Map } from 'lucide-react';
+import { Loader2, Download, ArrowLeft, RefreshCw, Map as MapIcon } from 'lucide-react';
 import { AvailabilityTimeline } from '../components/AvailabilityTimeline';
 import { StatusCenter } from '../components/StatusCenter';
 import { cn } from '../lib/utils';
@@ -899,7 +899,7 @@ export function Dashboard() {
                     {viewMode === 'configuration' && (
                         <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/10 backdrop-blur-[1px] hover:backdrop-blur-none transition-all">
                             <div className="bg-primary/90 text-primary-foreground px-4 py-2 rounded-full font-medium shadow-lg whitespace-nowrap flex items-center gap-2 hover:scale-105 transition-transform">
-                                <Map className="h-4 w-4" /> Show Map
+                                <MapIcon className="h-4 w-4" /> Show Map
                             </div>
                         </div>
                     )}
