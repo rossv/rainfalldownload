@@ -4,7 +4,7 @@ This file provides guidance for AI assistants working in this repository.
 
 ## Project overview
 
-**Rainfall Downloader** is a browser-based web app (React 19 + TypeScript + Vite) for discovering weather stations or virtual grid points, charting precipitation series, and exporting CSV/SWMM files for hydrological modeling workflows.
+**Rainfall Downloader** is a browser-based web app (React 19 + TypeScript + Vite) for discovering weather stations or virtual grid points, charting precipitation series, and exporting CSV/SWMM/JSON files for hydrological modeling workflows.
 
 Live at: `https://rossv.github.io/rainfalldownload/#/`
 
@@ -22,37 +22,66 @@ rainfalldownload/
 │   ├── hrrr.ts                  # HRRR proxy (validates + forwards to Python service)
 │   ├── nominatim.ts             # Geocoding proxy (OpenStreetMap Nominatim)
 │   └── noaa/[...path].ts        # NOAA CDO proxy
+├── docs/
+│   └── STATION_SEARCH.md        # Station search architecture notes
 ├── services/
 │   └── hrrr_virtual_api/        # FastAPI Python service for HRRR gridded data
 │       ├── app.py               # FastAPI app entry point
 │       └── requirements.txt
 ├── src/
 │   ├── assets/                  # SVG images
-│   ├── components/              # React components (charts, map, panels)
-│   ├── hooks/                   # usePreferences — global settings context
-│   ├── lib/                     # Utilities: export formats, date helpers, cn()
+│   ├── components/              # React components
+│   │   ├── AvailabilityTimeline.tsx  # Data availability/coverage visualization
+│   │   ├── HelpModal.tsx             # Help documentation modal
+│   │   ├── Layout.tsx                # Main layout wrapper + header navigation
+│   │   ├── RainfallChart.tsx         # Recharts time-series visualization
+│   │   ├── SettingsModal.tsx         # Provider settings + auth token input
+│   │   ├── StationList.tsx           # Station selection list with metadata
+│   │   ├── StationMap.tsx            # Leaflet map component
+│   │   ├── StationSearch.tsx         # Search input with provider selection
+│   │   └── StatusCenter.tsx          # Status/loading indicator
+│   ├── hooks/
+│   │   ├── usePreferences.tsx        # Global settings context + localStorage
+│   │   └── useFocusTrap.ts           # Accessibility: focus management for modals
+│   ├── lib/                     # Utilities
+│   │   ├── dateUtils.ts         # Date formatting (avoids timezone shifts)
+│   │   ├── export.ts            # CSV / SWMM / JSON export logic
+│   │   └── utils.ts             # cn() Tailwind class merger
 │   ├── pages/
 │   │   └── Dashboard.tsx        # Main page; orchestrates all state
 │   ├── services/
-│   │   ├── providers/           # One file per data provider
+│   │   ├── geocoding.ts         # Nominatim geocoding (7-day TTL cache)
+│   │   ├── http.ts              # Axios instance with retry logic
 │   │   ├── noaa.ts              # NOAA CDO service
-│   │   ├── geocoding.ts         # Nominatim geocoding (with TTL cache)
-│   │   └── http.ts              # Axios instance with retry logic
+│   │   └── providers/           # One file per data provider
+│   │       ├── README.md        # Provider architecture documentation
+│   │       ├── hrrr-params.ts   # HRRR parameter definitions
+│   │       ├── hrrr.ts          # HRRR gridded data provider
+│   │       ├── index.ts         # Provider registry (ProviderId, listProviders)
+│   │       ├── mrms.ts          # MRMS stub (not yet implemented)
+│   │       ├── provider-template.ts  # Skeleton for new providers
+│   │       ├── synoptic.ts      # Synoptic Labs mesonet provider
+│   │       └── usgs.ts          # USGS NWIS provider
 │   ├── test/
-│   │   └── setup.ts             # Vitest + jest-dom setup
+│   │   └── setup.ts             # Vitest + jest-dom setup, localStorage mock
 │   ├── types/
 │   │   ├── index.ts             # Core domain types (Station, UnifiedTimeSeries, …)
 │   │   └── data-source.ts       # DataSource interface all providers implement
 │   ├── App.tsx                  # Root: HashRouter + PreferencesProvider
 │   └── main.tsx                 # React DOM entry point
 ├── legacy/                      # Archived PyQt desktop app (not active)
+├── public/                      # Static assets (favicon.png, vite.svg)
 ├── .github/workflows/deploy.yml # GitHub Pages CI/CD
 ├── .vscode/                     # VS Code tasks + launch config
+├── AGENTS.md                    # Agent workflow notes
+├── CHANGELOG.md                 # Version history
 ├── index.html                   # Vite HTML entry
+├── postcss.config.js
 ├── vite.config.ts               # Vite + dev proxy config
 ├── tailwind.config.js           # Tailwind (dark mode: class)
 ├── eslint.config.js             # ESLint 9 flat config
-├── tsconfig.app.json            # Strict TypeScript config
+├── tsconfig.app.json            # Strict TypeScript config for src/
+├── tsconfig.node.json           # TypeScript config for build tooling
 └── package.json                 # Scripts and dependencies
 ```
 
@@ -73,11 +102,14 @@ npm run preview       # Preview production build locally
 |---|---|
 | UI | React 19, TypeScript ~5.9 |
 | Build | Vite 7, PostCSS, Autoprefixer |
-| Styling | Tailwind CSS 3 (dark mode via `class`) |
+| Styling | Tailwind CSS 3 (dark mode via `class`), `class-variance-authority` |
 | Routing | React Router 7 (HashRouter — required for GitHub Pages) |
 | Charts | Recharts 3 |
 | Maps | Leaflet + React-Leaflet 5 |
 | HTTP | Axios 1.13 with retry (see `src/services/http.ts`) |
+| Icons | lucide-react |
+| Dates | date-fns 4 |
+| Export | file-saver |
 | Testing | Vitest 4 + React Testing Library 16 (jsdom environment) |
 | Linting | ESLint 9 flat config + typescript-eslint |
 | Backend | FastAPI + Uvicorn + Herbie (Python, optional) |
@@ -103,24 +135,50 @@ Every data source implements `DataSource` (`src/types/data-source.ts`):
 
 ```ts
 interface DataSource {
-  searchStations(params: StationSearchParams): Promise<Station[]>
-  fetchData(params: FetchDataParams): Promise<UnifiedTimeSeries[]>
-  getDataTypes(stationId: string): Promise<DataType[]>
-  readonly capabilities: DataSourceCapabilities
+    readonly id: string;
+    readonly name: string;
+    readonly capabilities: DataSourceCapabilities;
+
+    findStationsByCity(city: string, limit?: number, buffer?: number, options?: DataQueryOptions): Promise<Station[]>;
+    findStationsByCoords(lat: number, lon: number, limit?: number, buffer?: number, options?: DataQueryOptions): Promise<Station[]>;
+    getAvailableDataTypes(stationId: string, options?: DataQueryOptions): Promise<DataType[]>;
+    fetchData(params: FetchDataParams & DataQueryOptions): Promise<UnifiedTimeSeries[]>;
 }
 ```
+
+`DataSourceCapabilities` carries `id`, `name`, `supportsStationSearch`, `supportsSpatialSearch`, `supportsGridInterpolation`, `requiresApiKey`, and optional `maxDateRangeDays`.
 
 Provider files live in `src/services/providers/`. When adding a new provider:
 1. Create `src/services/providers/<name>.ts` implementing `DataSource`.
 2. Add its `SourceType` literal to `src/types/index.ts`.
-3. Register it in the provider selector.
+3. Register it in `src/services/providers/index.ts` (the `listProviders()` registry).
 4. Write unit tests in `src/services/<name>.test.ts`.
+
+Current registered providers (`ProviderId`): `'noaa'` | `'usgs_nwis'` | `'synoptic'` | `'hrrr'`
+
+## Preferences and global state
+
+`usePreferences()` (from `src/hooks/usePreferences.tsx`) exposes:
+
+```ts
+interface Preferences {
+    providerId: ProviderId;
+    credentials: Record<ProviderId, ProviderCredentials>;  // token, apiKey, username per provider
+    units: 'standard' | 'metric';
+    darkMode: boolean;
+    defaultDatasetId: string;
+    defaultDataTypes: string[];
+}
+```
+
+Mutators: `updateCredentials(providerId, creds)`, `setProvider(providerId)`, `toggleDarkMode()`, `setUnits(units)`, `setDefaultDataset(datasetId, dataTypes)`.
+
+Migration: on load, any legacy top-level `apiKey` in stored JSON is promoted to `credentials[providerId].token`.
 
 ## Caching rules
 
-- NOAA CDO responses: 24-hour TTL in `localStorage`; cache keys include dataset and datatype to avoid stale mixups.
-- Nominatim geocoding: 5-minute TTL in dev.
-- Cache keys are versioned (currently v6 for NOAA). Bump the version when the response shape changes.
+- NOAA CDO responses: 24-hour TTL in `localStorage`; cache keys include dataset and datatype to avoid stale mixups. Cache version is currently `v6` — bump when the response shape changes.
+- Nominatim geocoding: **7-day TTL** in `localStorage` (key prefix `geocode_cache_v1_`); in-flight deduplication prevents duplicate concurrent requests.
 - Gracefully handle `QuotaExceededError` on localStorage writes — the existing `http.ts` helper already does this.
 
 ## Styling rules
@@ -144,7 +202,13 @@ These serverless handlers proxy external APIs to avoid CORS issues and centraliz
 - Set appropriate timeout values and forward relevant headers.
 - Return JSON consistently — `{ error: string }` on failure.
 
-In development, Vite's `server.proxy` config (in `vite.config.ts`) routes `/api/*` to the appropriate targets. Do not hardcode API base URLs in frontend code; use the `VITE_NOAA_PROXY_BASE` / `VITE_NOMINATIM_PROXY_BASE` env vars (already wired in the services).
+In development, Vite's `server.proxy` config (in `vite.config.ts`) routes:
+- `/api/hrrr` → `HRRR_PROXY_TARGET` (default `http://localhost:3000`)
+- `/api/noaa` → `https://www.ncdc.noaa.gov/cdo-web/api/v2`
+- `/api/usgs` → `https://waterservices.usgs.gov/nwis`
+- `/api/nominatim` → `https://nominatim.openstreetmap.org/search`
+
+Do not hardcode API base URLs in frontend code; use the `VITE_NOAA_PROXY_BASE` / `VITE_NOMINATIM_PROXY_BASE` env vars (already wired in the services).
 
 ## HRRR backend service
 
@@ -164,11 +228,14 @@ Relevant env vars:
 - `HRRR_HERBIE_CACHE` — GRIB cache directory (default: `.cache/herbie`)
 - `HRRR_USER_AGENT` — forwarded as `X-HRRR-User-Agent`
 
+HRRR supports parameters: `APCP` (precipitation, default), `TMP`, `RH`, `WIND`. Virtual station IDs are derived from lat/lon. Maximum date range is 30 days.
+
 ## Export formats
 
-CSV export logic lives in `src/lib/export.ts`:
+Export logic lives in `src/lib/export.ts`:
 - Files are written with a UTF-8 BOM for Excel compatibility.
-- Wide format (multiple stations) and tall format (single station) are both supported.
+- Wide format (multiple stations) and tall format (single station) are both supported for CSV.
+- SWMM and JSON export are also available.
 - Filenames include the export date: `Rainfall_Data_Multiple_Stations_YYYY-MM-DD.csv`.
 
 ## CI / deployment
@@ -197,3 +264,4 @@ The Vite `base` is `/rainfalldownload/`. Routing uses `HashRouter` so that GitHu
 - Do not commit NOAA tokens, Synoptic tokens, or any other credentials. Credentials are runtime-only, stored in `localStorage`.
 - Do not change `HashRouter` to `BrowserRouter` — it will break GitHub Pages routing.
 - Do not modify `.github/workflows/deploy.yml` without verifying the Node version and build output path still match.
+- Do not use the old `DataSource` method names (`searchStations`, `getDataTypes`) — the current interface uses `findStationsByCity`, `findStationsByCoords`, and `getAvailableDataTypes`.
